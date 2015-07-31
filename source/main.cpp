@@ -43,15 +43,13 @@ Revisions and bug fixes:
 */
 int main(int argc, char** argv)
 {
-    llvm::InitializeNativeTarget();
-
 	// Print the McVM header
 	std::cout << "*******************************************************" << std::endl;
 	std::cout << "         McVM - The McLab Virtual Machine v1.0         " << std::endl;
 	std::cout << "Visit http://www.sable.mcgill.ca for more information. " << std::endl;
 	std::cout << "*******************************************************" << std::endl;
 	std::cout << std::endl;
-    
+
 	// Initialize the config manager
 	ConfigManager::initialize();
 
@@ -67,14 +65,14 @@ int main(int argc, char** argv)
 	// Parse the command-line arguments
 	ConfigManager::parseCmdArgs(argc, argv);
 
-    // OSR depends on the osr-flag being enabled, try it 
+    // OSR depends on the osr-flag being enabled, try it
     // after parsing the command line arguments
     JITCompiler::initializeOSR();
 
 	// TODO NAL: get host name and port from Config ...
 	// create and connect to natlab (server mode)
 	Client::openSocketStream(Client::FRONTEND_DEFAULT_HOST, Client::FRONTEND_DEFAULT_PORT);
-			
+
 	// Load the standard library
         mcvm::stdlib::loadLibrary();
 
@@ -112,7 +110,7 @@ int main(int argc, char** argv)
 		// Run the read-eval-print loop
 		runREPLoop();
 	}
-	
+
 	// Shut down the JIT compiler
 	JITCompiler::shutdown();
 

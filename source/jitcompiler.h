@@ -25,11 +25,11 @@
 #include <ext/hash_map>
 #include <vector>
 #include <map>
-#include <llvm/LLVMContext.h>
-#include <llvm/Function.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Function.h>
 #include <llvm/PassManager.h>
-#include <llvm/ExecutionEngine/JIT.h>
-#include <llvm/IRBuilder.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/Support/TargetSelect.h>
 #include "configmanager.h"
 #include "iir.h"
@@ -49,6 +49,7 @@
 #include "analysis_metrics.h"
 #include "analysis_boundscheck.h"
 #include "analysis_copyplacement.h"
+#include "MCJITHelper.hpp"
 
 /***************************************************************
 * Class   : CompError
@@ -60,25 +61,25 @@ Revisions and bug fixes:
 class CompError
 {
 public:
-	
+
 	// Constructor
 	CompError(const std::string& errorText, IIRNode* pNode = NULL)
 	: m_errorText(errorText), m_pErrorNode(pNode) {}
-	
+
 	// Method to obtain a string representation of the error
 	std::string toString() const;
-	
+
 	// Accessor to get the error text
 	const std::string& getErrorText() const { return m_errorText; }
-	
+
 	// Accessor to get the erroneous node
-	IIRNode* getErrorNode() const { return m_pErrorNode; } 
-	
+	IIRNode* getErrorNode() const { return m_pErrorNode; }
+
 private:
-	
+
 	// Error description text
 	std::string m_errorText;
-	
+
 	// Erroneous node
 	IIRNode* m_pErrorNode;
 };
@@ -93,26 +94,26 @@ Revisions and bug fixes:
 class JITCompiler
 {
 public:
-	
+
 	// LLVM type vector type definition
 	typedef std::vector<llvm::Type*> LLVMTypeVector;
-	
+
 	// LLVM value vector type definition
 	typedef std::vector<llvm::Value*> LLVMValueVector;
-	
+
 	// LLVM value pair type definition
 	typedef std::pair<llvm::Value*, llvm::Value*> LLVMValuePair;
-	
+
 	// Void pointer type constant
 	static llvm::Type* VOID_PTR_TYPE;
-	
+
 	// Method to initialize the JIT compiler
 	static void initialize();
-	
+
 	// Method to shut down the JIT compiler
 	static void shutdown();
 
-    // Method to initialize osr facility	
+    // Method to initialize osr facility
 	static void initializeOSR();
 
 	// Method to register a native function
@@ -121,11 +122,12 @@ public:
 		void* pFuncPtr,
 		llvm::Type* returnType,
 		const LLVMTypeVector& argTypes,
+                llvm::Module* MCJITModule,
 		bool noMemWrites = false,
 		bool noMemAccess = false,
 		bool noThrows = false
 	);
-	
+
 	// Method to register an optimized library function
 	static void regLibraryFunc(
 		const LibFunction* pLibFunc,
@@ -134,15 +136,19 @@ public:
 		const TypeSet& returnType,
 		bool noMemWrites = false,
 		bool noMemAccess = false,
-		bool noThrows = false		
+		bool noThrows = false
 	);
-	
+
 	// Method to compile a program function given argument types
-	static void compileFunction(ProgFunction* pFunction, const TypeSetString& argTypeStr);
-	
+	static void compileFunction(
+            ProgFunction* pFunction,
+            const TypeSetString& argTypeStr,
+            llvm::Module* MCJITModule = nullptr
+        );
+
 	// Method to call a JIT-compiled version of a function
 	static ArrayObj* callFunction(ProgFunction* pFunction, ArrayObj* pArguments, size_t outArgCount);
-	
+
 	// Config variable to enable/disable the JIT compiler
 	static ConfigVar s_jitEnableVar;
 
@@ -151,12 +157,12 @@ public:
 	static ConfigVar s_jitUseBinOpOpts;
 	static ConfigVar s_jitUseLibOpts;
 	static ConfigVar s_jitUseDirectCalls;
-	
+
 	// Config variables to disable matrix read/write bounds checking
 	static ConfigVar s_jitNoReadBoundChecks;
 	static ConfigVar s_jitNoWriteBoundChecks;
 
-	// Config variable for enabling or disabling copy optimizations	
+	// Config variable for enabling or disabling copy optimizations
 	static ConfigVar s_jitCopyEnableVar;
 
     // Config variables to enable/disable on-stack replacement
@@ -164,70 +170,70 @@ public:
     static ConfigVar s_jitOsrStrategyVar;
 
 private:
-	
+
 	// Variable value class
 	class Value
 	{
 	public:
-		
+
 		// Full constructor
 		Value(llvm::Value* pVal, DataObject::Type type)
 		: pValue(pVal), objType(type) {}
-		
+
 		// Default constructor
 		Value()
 		: pValue(NULL), objType(DataObject::UNKNOWN) {}
-		
+
 		// Variable value (null if env-stored)
 		llvm::Value* pValue;
-		
+
 		// Actual object type
 		DataObject::Type objType;
 	};
-	
+
 	// Value vector type definition
 	typedef std::vector<Value> ValueVector;
-	
+
 	// Variable map type definition
 	typedef __gnu_cxx::hash_map<SymbolExpr*, Value, IntHashFunc<SymbolExpr*>, __gnu_cxx::equal_to<SymbolExpr*> > VariableMap;
-	
+
 	// Branching point type definition
 	typedef std::pair<llvm::BasicBlock*, VariableMap> BranchPoint;
-	
+
 	// Branching point list type definition
 	typedef std::vector<BranchPoint> BranchList;
-	
+
 	// Function set type definition
 	typedef std::set<Function*, std::less<Function*>, gc_allocator<Function> > FunctionSet;
-		
+
 	// Native function structure
 	struct NativeFunc
 	{
 		// Function name
 		std::string name;
-		
+
 		// Return type
 		llvm::Type* returnType;
-		
+
 		// Input argument types
 		LLVMTypeVector argTypes;
-		
+
 		// LLVM function object
 		llvm::Function* pLLVMFunc;
 	};
 
 	// Native function map type definition
 	typedef std::map<void*, NativeFunc> NativeMap;
-	
+
 	// Optimized library function key class
 	class LibFuncKey
 	{
 	public:
-		
+
 		// Constructor
 		LibFuncKey(const LibFunction* pFunc, const TypeSetString& inTypes, const TypeSet& retType)
 		: pLibFunc(pFunc), inputTypes(inTypes), returnType(retType) {}
-		
+
 		// Less-than comparison operator (for sorting)
 		bool operator < (const LibFuncKey& other) const
 		{
@@ -239,119 +245,119 @@ private:
 			else if	(returnType < other.returnType)	return true;
 			else	return false;
 		}
-		
+
 		// Library function
 		const LibFunction* pLibFunc;
-				
+
 		// Input types
 		TypeSetString inputTypes;
-		
+
 		// Return type
 		TypeSet returnType;
 	};
-	
+
 	// Optimized library function map type definition
 	typedef std::map<LibFuncKey, void*, std::less<LibFuncKey>, gc_allocator<std::pair<LibFuncKey, void*> > > LibFuncMap;
-	
+
 	// Compiled program function pointer type definition
 	typedef void (*COMP_FUNC_PTR)(byte* pInStruct, byte* pOutStruct);
-	
+
 	// Compiled wrapper function pointer type definition
 	typedef ArrayObj* (*WRAPPER_FUNC_PTR)(ArrayObj* pArgs, int64 outArgCount);
-	
+
 	// Compiled function version structure
 	struct CompVersion
-	{		
+	{
 		CompVersion():pOutStructType(NULL), pEnvObject(NULL), pInStruct(NULL), pOutStruct(NULL),
 		inStructSize(0), outStructSize(0), pFuncPtr(NULL), pWrapperPtr(NULL){}
-		
+
 		// Input argument types
 		TypeSetString inArgTypes;
-				
+
 		// Reaching definition information
 		const ReachDefInfo* pReachDefInfo;
 
 		// Live variable information
 		const LiveVarInfo* pLiveVarInfo;
-		
+
 		// Type inference information
 		const TypeInferInfo* pTypeInferInfo;
-		
+
 		// Code metrics information
 		const MetricsInfo* pMetricsInfo;
-		
+
 		// Bounds Checking elimination analysis information
 		const BoundsCheckInfo* pBoundsCheckInfo;
-		
-		// Array copy analysis Information 
+
+		// Array copy analysis Information
 		const ArrayCopyAnalysisInfo* pArrayCopyInfo;
-		
+
 		// Input argument storage modes and object types
 		LLVMTypeVector inArgStoreModes;
 		std::vector<DataObject::Type> inArgObjTypes;
 
 		// Type of the input data structure
 		llvm::StructType* pInStructType;
-		
+
 		// Output argument storage modes and object types
 		LLVMTypeVector outArgStoreModes;
 		std::vector<DataObject::Type> outArgObjTypes;
-		
+
 		// Type of the return data structure
 		llvm::StructType* pOutStructType;
-		
+
 		// Entry basic block for the function
 		llvm::BasicBlock* pEntryBlock;
-		
+
 		// Environment object pointer (NULL if not used)
 		llvm::Value* pEnvObject;
-		
+
 		// Call in/out data structs (NULL if not used)
 		llvm::Value* pInStruct;
 		llvm::Value* pOutStruct;
-		
+
 		// Maximum call in/out data struct sizes encountered
 		size_t inStructSize;
 		size_t outStructSize;
-		
+
 		// LLVM function object
 		llvm::Function* pLLVMFunc;
-		
+
 		// LLVM wrapper function object
 		llvm::Function* pLLVMWrapper;
 
 		// Pointer to the compiled program function code
 		COMP_FUNC_PTR pFuncPtr;
-		
+
 		// Pointer to the compiled wrapper function code
 		WRAPPER_FUNC_PTR pWrapperPtr;
 	};
-	
+
 	// Compiled version map type definition
 	typedef std::map<TypeSetString, CompVersion, std::less<TypeSetString>, gc_allocator<std::pair<TypeSetString, CompVersion> > > VersionMap;
-	
+
 	// Compiled function structure
 	struct CompFunction
 	{
 		// Program function object
 		ProgFunction* pProgFunc;
-		
+
 		// IIR nodes for the function body
 		StmtSequence* pFuncBody;
-		
+
 		// List of established callees
 		FunctionSet callees;
-		
+
 		// Compiled function versions
 		VersionMap versions;
 	};
-	
+
 	// Function map type definition
 	typedef std::map<ProgFunction*, CompFunction, std::less<ProgFunction*>, gc_allocator<std::pair<ProgFunction*, CompFunction> > > FunctionMap;
-	
+
 	// Binary operator factory function type definition
 	typedef llvm::Value* (*BINOP_FACTORY_FUNC)(llvm::IRBuilder<>& builder, llvm::Value* pLVal, llvm::Value* pRVal);
-	
+
 	// Methods to create binary LLVM instructions
 	static llvm::Value* createAddInstr(llvm::IRBuilder<>& builder, llvm::Value* pLVal, llvm::Value* pRVal);
 	static llvm::Value* createSubInstr(llvm::IRBuilder<>& builder, llvm::Value* pLVal, llvm::Value* pRVal);
@@ -368,7 +374,7 @@ private:
 	static llvm::Value* createFCmpOGEInstr(llvm::IRBuilder<>& builder, llvm::Value* pLVal, llvm::Value* pRVal) { return builder.CreateFCmpOGE(pLVal, pRVal); }
 	static llvm::Value* createICmpSLEInstr(llvm::IRBuilder<>& builder, llvm::Value* pLVal, llvm::Value* pRVal) { return builder.CreateICmpSLE(pLVal, pRVal); }
 	static llvm::Value* createFCmpOLEInstr(llvm::IRBuilder<>& builder, llvm::Value* pLVal, llvm::Value* pRVal) { return builder.CreateFCmpOLE(pLVal, pRVal); }
-	
+
 	// Method to handle exceptions during function calls
 	static void callExceptHandler(
 		ProgFunction* pFunction,
@@ -376,13 +382,13 @@ private:
 		byte* pInStruct,
 		byte* pOutStruct
 	);
-	
+
 	// Method to create/get the calling environment for a function
 	static llvm::Value* getCallEnv(
 		CompFunction& function,
 		CompVersion& version
 	);
-	
+
 	// Method to create/get the call data structures for a function
 	static LLVMValuePair getCallStructs(
 		CompFunction& callerFunction,
@@ -390,7 +396,7 @@ private:
 		CompFunction& calleeFunction,
 		CompVersion& calleeVersion
 	);
-	
+
 	// Method to match branching point variable mappings
 	static VariableMap matchBranchPoints(
 		CompFunction& function,
@@ -400,7 +406,7 @@ private:
 		const BranchList& branchPoints,
 		llvm::BasicBlock* pDestBlock
 	);
-	
+
 	// Method to write variables to the environment
 	static void writeVariables(
 		llvm::IRBuilder<>& irBuilder,
@@ -418,7 +424,7 @@ private:
 		SymbolExpr* pSymbol,
 		const Value& value
 	);
-	
+
 	// Method to read variables to the environment
 	static void readVariables(
 		llvm::IRBuilder<>& irBuilder,
@@ -438,30 +444,30 @@ private:
 		SymbolExpr* pSymbol,
 		bool safeRead
 	);
-	
+
 	// Method to mark variables as written in the environment
 	static void markVarsWritten(
 		VariableMap& varMap,
 		const Expression::SymbolSet& variables
 	);
-	
+
 	// Method to print the contents of a variable map
 	static void printVarMap(
 		const VariableMap& varMap
 	);
-	
+
 	// Method to get the storage mode for a given type set
 	static llvm::Type* getStorageMode(
 		const TypeSet& typeSet,
 		DataObject::Type& objType
 	);
-	
+
 	// Method to get the widest storage mode among two options
 	static llvm::Type* widestStorageMode(
 		llvm::Type* modeA,
 		llvm::Type* modeB
 	);
-	
+
 	// Method to change the storage mode of a value
 	static llvm::Value* changeStorageMode(
 		llvm::IRBuilder<>& irBuilder,
@@ -469,13 +475,14 @@ private:
 		DataObject::Type objType,
 		llvm::Type* newMode
 	);
-		
+
 	// Method to compile a call wrapper function
 	static void compWrapperFunc(
 		CompFunction& function,
-		CompVersion& version			
+		CompVersion& version,
+                llvm::Module* MCJITModule = nullptr
 	);
-	
+
 	// Method to compile a statement sequence
 	static llvm::BasicBlock* compStmtSeq(
 		StmtSequence* pSequence,
@@ -517,7 +524,7 @@ private:
 		VariableMap varMap,
 		BranchPoint& exitPoint
 	);
-	
+
 	// Method to compile an if-else statement
 	static llvm::BasicBlock* compIfElseStmt(
 		IfElseStmt* pIfStmt,
@@ -529,7 +536,7 @@ private:
 		BranchList& breakPoints,
 		BranchList& returnPoints
 	);
-	
+
 	// Method to compile a loop statement
 	static llvm::BasicBlock* compLoopStmt(
 		LoopStmt* pLoopStmt,
@@ -539,7 +546,7 @@ private:
 		BranchPoint& exitPoint,
 		BranchList& returnPoints
 	);
-	
+
 	// Method to compile an expression
 	static Value compExpression(
 		Expression* pExpression,
@@ -565,7 +572,7 @@ private:
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
 	);
-	
+
 	// Method to compile a binary expression
 	static Value compBinaryExpr(
 		BinaryOpExpr* pBinaryExpr,
@@ -578,7 +585,7 @@ private:
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
 	);
-	
+
 	// Method to generate code for binary operations
 	static Value compBinaryOp(
 		Expression* pLeftExpr,
@@ -593,7 +600,7 @@ private:
 		void* pRScalarFuncBool,
 		void* pLScalarFuncChar,
 		void* pRScalarFuncChar,
-		void* pLScalarFuncF64,		
+		void* pLScalarFuncF64,
 		void* pRScalarFuncF64,
 		void* pLScalarFuncC128,
 		void* pRScalarFuncC128,
@@ -614,7 +621,7 @@ private:
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
 	);
-	
+
 	// Method to compile a parameterized expression
 	static ValueVector compParamExpr(
 		ParamExpr* pParamExpr,
@@ -644,8 +651,8 @@ private:
 		VariableMap& varMap,
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
-	);	
-	
+	);
+
 	static void compFuncCallJIT(
 		Function* pCalleeFunc,
 		const Expression::ExprVector& arguments,
@@ -662,7 +669,7 @@ private:
 		llvm::BasicBlock* pExitBlock,
 		const TypeSetString& inArgTypes,
 		ValueVector& valueVector);
-		
+
 	// Method to compile a symbol expression
 	static ValueVector compSymbolExpr(
 		SymbolExpr* pSymbolExpr,
@@ -689,7 +696,7 @@ private:
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
 	);
-	
+
 	// Method to generate code for a scalar array read operation
 	static Value compArrayRead(
 		llvm::Value* pMatrixObj,
@@ -715,7 +722,7 @@ private:
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
 	);
-	
+
 	// Method to generate fallback code for an array-returning expression evaluation
 	static ValueVector arrayExprFallback(
 		Expression* pExpression,
@@ -730,7 +737,7 @@ private:
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
 	);
-	
+
 	// Method to generate fallback code for an expression evaluation
 	static Value exprFallback(
 		Expression* pExpression,
@@ -744,7 +751,7 @@ private:
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
 	);
-	
+
 	// Method to read values from an array object
 	static ValueVector getArrayValues(
 		llvm::Value* pArrayObj,
@@ -758,20 +765,20 @@ private:
 		llvm::BasicBlock* pEntryBlock,
 		llvm::BasicBlock* pExitBlock
 	);
-	
+
 	// Method to create a call throwing a runtime error
 	static void createThrowError(
 		llvm::IRBuilder<>& irBuilder,
 		const char* pErrorText,
 		const IIRNode* pErrorNode = NULL
 	);
-	
+
 	// Method to load the type of an object from memory
 	static llvm::LoadInst* loadObjectType(
 		llvm::IRBuilder<>& irBuilder,
 		llvm::Value* pObjPointer
 	);
-	
+
 	// Method to load a member value from memory
 	static llvm::LoadInst* loadMemberValue(
 		llvm::IRBuilder<>& irBuilder,
@@ -779,26 +786,26 @@ private:
 		size_t valOffset,
 		llvm::Type* valType
 	);
-	
+
 	// Method to create a native function call
 	static llvm::CallInst* createNativeCall(
 		llvm::IRBuilder<>& irBuilder,
 		void* pNativeFunc,
 		const LLVMValueVector& arguments
-	);	
-	
+	);
+
 	// Method to create a pointer constant
 	static llvm::Constant* createPtrConst(
 		const void* pPointer,
 		llvm::Type* valType = llvm::Type::getInt8Ty(*s_Context)
 	);
-	
+
 	static void setUpParameters(ProgFunction* pFunction, CompFunction& compFunction,  CompVersion& compVersion,
 	const TypeSetString& argTypeStr);
-	
-	static void compFuncReturn(llvm::IRBuilder<>& exitBuilder, CompFunction& compFunction, 
+
+	static void compFuncReturn(llvm::IRBuilder<>& exitBuilder, CompFunction& compFunction,
 			CompVersion& compVersion, VariableMap& exitVarMap, const ProgFunction::ParamVector& outParams);
-	
+
 	// Method to generate copies for a block of stmts
 	static void genCopyCode(
 		llvm::IRBuilder<>& irBuilder,
@@ -818,7 +825,7 @@ private:
 		VariableMap& varMap,
 		const CopyInfo& cpInfo
 	);
-	
+
 	// Method to generate copy code at a loop's header
 	static llvm::BasicBlock* genLoopHeaderCopy(
 		llvm::BasicBlock* curBlock,
@@ -829,34 +836,39 @@ private:
 		SymbolExpr* pTestVar,
 		VariableMap& varMap
 	);
-	
+
 	// Method to get the integer type for a given size in bytes
 	static llvm::Type* getIntType(size_t sizeInBytes);
-	
+
 	// Method to get the constant corresponding to an object type
 	static llvm::Constant* getObjType(DataObject::Type objType);
 
-        // LLVM Context 
+        /* DCD: initial MCJIT integration */
+        typedef std::map<llvm::Module*, llvm::FunctionPassManager*> FPMMap;
+        static MCJITHelper* s_JITHelper;
+        static FPMMap s_MapForOptFPMs;
+        static FPMMap s_MapForPrintFPMs;
+        static llvm::FunctionPassManager* generateOptFPM(llvm::Module* M);
+        static llvm::FunctionPassManager* generatePrintFPM(llvm::Module* M);
+        static llvm::Function* getLLVMFunctionToCall(llvm::Function* functionToCall, llvm::Module* currentModule);
+        static void runOptFPM(llvm::Function* F);
+        static void runPrintFPM(llvm::Function* F);
+
+        // LLVM Context
         static llvm::LLVMContext* s_Context;
-	
-	// LLVM module to store functions
-	static llvm::Module* s_pModule;
-	
+
+	// LLVM module currently being used for IR generation
+	static llvm::Module* s_MCJITModuleInUse;
+
 	// LLVM execution engine
 	static llvm::ExecutionEngine* s_pExecEngine;
-	
-	// LLVM function pass manager (for optimization passes)
-	static llvm::FunctionPassManager* s_pFunctionPasses;
 
-	// LLVM function pass manager (for the printing pass)
-	static llvm::FunctionPassManager* s_pPrintPass;
-	
 	// Map of function pointers to native function objects
 	static NativeMap s_nativeMap;
-	
+
 	// Map of signatures to optimized library functions
 	static LibFuncMap s_libFuncMap;
-	
+
 	// Map of program functions to function objects
 	static FunctionMap s_functionMap;
 
@@ -866,4 +878,4 @@ private:
     static llvm::FunctionPassManager* s_pOsrInfoPass;
 };
 
-#endif // #ifndef JITCOMPILER_H_ 
+#endif // #ifndef JITCOMPILER_H_

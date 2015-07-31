@@ -39,7 +39,7 @@ const char * Client::FRONTEND_DEFAULT_HOST =  "localhost";
 const char* Client::serverName = Client::FRONTEND_DEFAULT_HOST;
 
 // Compiler front-end command-line entry point
-const std::string Client::FRONTEND_ENTRY_POINT = "natlab.sh";
+const std::string Client::FRONTEND_ENTRY_POINT = "./Natlab.sh"; /* DCD */
 
 // Compiler front-end command arguments
 const std::string Client::FRONTEND_ARGUMENTS =  " -matlab -xml -quiet -server &";

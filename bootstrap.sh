@@ -14,7 +14,8 @@ uname -s | grep -qs Linux && cpu=`cat /proc/cpuinfo | grep '^processor' | wc -l`
 uname -s | grep -qs 'Darwin\|BSD\|DragonFly' && cpu=`sysctl -n hw.ncpu`
 echo "You seem to have $cpu cpu cores"
 
-#mkdir vendor
+##mkdir vendor
+mkdir -p vendor
 cd vendor
 dir=`pwd`
 
@@ -43,7 +44,7 @@ if $llvm ; then
             || exit $?
     else
         ./configure --prefix=$dir \
-            --disable-optimized \ 
+            --disable-optimized \
             --enable-jit \
             --enable-targets=host \
             --enable-shared \
@@ -69,13 +70,14 @@ if $boehmgc ; then
     automake --add-missing|| exit $?
   else
     version="gc-7.2"
-    wget -N http://www.hpl.hp.com/personal/Hans_Boehm/gc/gc_source/$version.tar.gz  || exit $?
+    #wget -N http://www.hpl.hp.com/personal/Hans_Boehm/gc/gc_source/$version.tar.gz  || exit $?
+    wget -N http://www.hboehm.info/gc/gc_source/$version.tar.gz  || exit $?
     tar xzf $version.tar.gz || exit $?
     cd $version
   fi
   ./configure --prefix=$dir --disable-debug --disable-dependency-tracking --enable-cplusplus || exit $?
   make || exit $?
-  make install #the install can generate errors but still working fine ... 
+  make install #the install can generate errors but still working fine ...
   cd ..
 fi
 
