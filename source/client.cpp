@@ -29,9 +29,9 @@
 // communication interface to the server(natlab frontend)
 ClientSocket* Client::socketStream = 0;
 
-// the port number attached to the frontend	
+// the port number attached to the frontend
 int Client::serverPortNo = Client::FRONTEND_DEFAULT_PORT;
-		
+
 // default hostname of the server.
 const char * Client::FRONTEND_DEFAULT_HOST =  "localhost";
 
@@ -39,7 +39,7 @@ const char * Client::FRONTEND_DEFAULT_HOST =  "localhost";
 const char* Client::serverName = Client::FRONTEND_DEFAULT_HOST;
 
 // Compiler front-end command-line entry point
-const std::string Client::FRONTEND_ENTRY_POINT = "./Natlab.sh"; /* DCD */
+const std::string Client::FRONTEND_ENTRY_POINT = "./natlab.sh";
 
 // Compiler front-end command arguments
 const std::string Client::FRONTEND_ARGUMENTS =  " -matlab -xml -quiet -server &";
@@ -79,16 +79,16 @@ void Client::start(const char* svrName, const int svrPortNo)
 {
 	// set the name of the server
 	serverName = svrName;
-	
+
 	// test whether the port is free
 	validatePortNo(svrPortNo);
-	
+
 	// open a string stream
 	std::ostringstream command;
-	
+
 	// form the command to start natlab in server mode
 	command << FRONTEND_ENTRY_POINT	<< " -sp " << serverPortNo << " " << FRONTEND_ARGUMENTS;
-	
+
 	// start the service as a background process.
 	system(command.str().c_str());
 
@@ -111,26 +111,26 @@ void Client::validatePortNo(const int svrPortNo)
 {
 	// copy server port no
 	int portNo = svrPortNo;
-	
+
 	// seed the pseudo random number generator
 	srand( time(0) );
-	
+
 	// count the number of attempts
 	int tries = 0;
-	
+
 	while (ClientSocket::isBound(portNo))
 	{
-		// pick a port randomly from the pool of unregistered ports (starting from PORT_NO_LOWER_BOUND) 
+		// pick a port randomly from the pool of unregistered ports (starting from PORT_NO_LOWER_BOUND)
 		portNo = PORT_NO_LOWER_BOUND + rand() % PORT_NO_POOL_SIZE;
-		
+
 		// a safe guard against infinite loop
 		if ( ++tries > PORT_NO_POOL_SIZE )
 		{
 			throw ConnectionError("Unable to obtain a free port; pls. try again");
 		}
 	}
-	
-	// store the selected port 
+
+	// store the selected port
 	serverPortNo = portNo;
 }
 
@@ -147,20 +147,20 @@ void Client::connect()
 	{
 		throw ConnectionError("Server name cannot be null");
 	}
-	
+
 	// count the number of secs this process has waited trying
 	// to connect to the server; give up after 5s.
 	int elapsedTime = 0;
-	
+
 	while (!(socketStream->isConnected()) )
 	{
 		try
 		{
 		    sleep(1); // a delay of 1s
-		    
+
 		    // try to connect to the server
 		    socketStream->connectSocket(serverName, serverPortNo);
-		    
+
 		    // create an heartbeat thread
 		    createHBThread();
 		}
@@ -192,14 +192,14 @@ void Client::openSocketStream(const char *svrName, const int svrPortNo)
 	{
 		// attempt to start a natlab process
 		start(svrName, svrPortNo);
-		
+
 		// try to establish a connection
 		connect();
 	}
 	catch(ConnectionError& e)
 	{
 		std::cerr << "Error: " << e.what() << std::endl;
-		
+
 		// for now, just exit the program
 		exit(1);
 	}
@@ -289,16 +289,16 @@ std::string Client::sendCommand(const char* command)
 {
 	// acquire the mutual exclusion lock
 	pthread_mutex_lock(&mutex);
-	
+
 	// send command, if connection is okay
 	if (socketStream && socketStream->isConnected())
 	{
 		// send the command
 		socketStream->sendAll(command, strlen(command) + 1);
-		
+
 		// release the mutual exclusion lock since only one thread is receiving
 		pthread_mutex_unlock(&mutex);
-		
+
 		// return the output
 		return socketStream->receiveUntilNull();
 	}
@@ -306,7 +306,7 @@ std::string Client::sendCommand(const char* command)
 	{
 		// must release the lock to progress
 		pthread_mutex_unlock(&mutex);
-		
+
 		// an error has occured
 		throw ConnectionError("Socket stream not available");
 	}
@@ -333,7 +333,7 @@ inline void Client::waitHBThread()
 Revisions and bug fixes:
 */
 inline int Client::createHBThread()
-{	
+{
 	// create an heartbeat thread
 	return pthread_create(&hb, 0, &heartbeat, 0);
 }
@@ -349,21 +349,21 @@ void* Client::heartbeat(void* arg)
 {
 	// declare and initialize a heartbeat message
 	const char* hb = "<heartbeat></heartbeat>";
-			
+
 	// send a heartbeat message to the server every MAX_INTERVAL secs
 	while (true)
 	{
 		// acquire the mutual exclusion lock
 		pthread_mutex_lock(&mutex);
-     	
+
 		// send command, if connection is okay
 		if (socketStream && socketStream->isConnected())
 		{
 			try
 			{
-				// send the message 
+				// send the message
 				socketStream->sendAll(hb, strlen(hb) + 1);
-     		
+
 				// release the mutual exclusion lock since only one thread is receiving
 				pthread_mutex_unlock(&mutex);
 			}
@@ -371,9 +371,9 @@ void* Client::heartbeat(void* arg)
 			{
 				// release the lock
 				pthread_mutex_unlock(&mutex);
-				
+
 				std::cout << e.what() << std::endl;
-												
+
 				// stop, for now
 				exit(1);
 			}
@@ -382,13 +382,13 @@ void* Client::heartbeat(void* arg)
 		{
 			// release the lock
 			pthread_mutex_unlock(&mutex);
-							
+
 			std::cout << " Disconnected from the server " << std::endl;
-															
+
 			// stop, for now
 			exit(1);
 		}
-		
+
 		// wait for some seconds (interval)
 		sleep(MAX_INTERVAL);
 	}
@@ -407,10 +407,10 @@ void Client::closeSocketStream()
 	{
 		// close the socket
 		socketStream->closeSocket();
-		
-		// free up the memory socketStream 
+
+		// free up the memory socketStream
 		delete socketStream;
-		
+
 		// clean up the socket
 		ClientSocket::cleanUP();
 	}
