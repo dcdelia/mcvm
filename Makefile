@@ -1,6 +1,6 @@
 OUT = mcvm
-ODIR = build
-SDIR = source
+OBJDIR = build
+SRCDIR = source
 
 INCLUDE = -Ivendor/include -Ilib/include -I/usr/local/include
 CXXFLAGS =   $(INCLUDE) -Wall -g3 -std=c++11 -Wno-deprecated
@@ -20,16 +20,21 @@ _OBJS = analysis_arraycopy.o analysis_boundscheck.o analysis_copyplacement.o ana
 		interpreter.o jitcompiler.o lambdaexpr.o loopstmts.o main.o matrixexpr.o matrixobjs.o matrixops.o objects.o \
 		paramexpr.o parser.o plotting.o process.o profiling.o rangeexpr.o rangeobj.o runtimebase.o mcvmstdlib.o stmtsequence.o \
 		switchstmt.o symbolexpr.o transform_endexpr.o transform_logic.o transform_loops.o transform_split.o transform_switch.o \
-		typeinfer.o unaryopexpr.o utility.o xml.o MCJITHelper.o
-OBJS = $(patsubst %,$(ODIR)/%,$(_OBJS))
+		typeinfer.o unaryopexpr.o utility.o xml.o mcjithelper.o
+OBJS = $(patsubst %,$(OBJDIR)/%,$(_OBJS))
 
-$(ODIR)/%.o: $(SDIR)/%.cpp
+all: $(OUT)
+
+$(OBJDIR):
+	mkdir -p $(OBJDIR)
+
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CXX) -c $(INCLUDE) -o $@ $< $(CXXFLAGS)
 
 $(OUT): $(OBJS)
-	$(CXX) $(ODIR)/*.o $(LLVMLIBS) $(LIBS) -o $(OUT)
+	$(CXX) $(OBJDIR)/*.o $(LLVMLIBS) $(LIBS) -o $(OUT)
 
 .PHONY: clean
 
 clean:
-	rm -f $(ODIR)/*.o $(OUT)
+	rm -f $(OBJDIR)/*.o $(OUT)

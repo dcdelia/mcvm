@@ -49,7 +49,7 @@
 #include "analysis_metrics.h"
 #include "analysis_boundscheck.h"
 #include "analysis_copyplacement.h"
-#include "MCJITHelper.hpp"
+#include "mcjithelper.hpp"
 
 /***************************************************************
 * Class   : CompError
@@ -846,12 +846,10 @@ private:
         /* DCD: initial MCJIT integration */
         typedef std::map<llvm::Module*, llvm::FunctionPassManager*> FPMMap;
         static MCJITHelper* s_JITHelper;
-        static FPMMap s_MapForOptFPMs;
-        static FPMMap s_MapForPrintFPMs;
-        static llvm::FunctionPassManager* generateOptFPM(llvm::Module* M);
-        static llvm::FunctionPassManager* generatePrintFPM(llvm::Module* M);
+        static FPMMap s_FunctionPassManagerMap;
+        static llvm::FunctionPassManager* generateFPM(llvm::Module* M);
         static llvm::Function* getLLVMFunctionToCall(llvm::Function* functionToCall, llvm::Module* currentModule);
-        static void runOptFPM(llvm::Function* F);
+        static void runFPM(llvm::Function* F);
         static void runPrintFPM(llvm::Function* F);
 
         // LLVM Context

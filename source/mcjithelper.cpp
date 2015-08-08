@@ -1,4 +1,11 @@
-#include "MCJITHelper.hpp"
+/* ===============================================================
+ * Helper class to use LLVM MCJIT compiler in McVM. Some of this
+ * code is adapted from TinyVM (http://github.com/dcdelia/tinyvm)
+ *
+ * (C) Daniele Cono D'Elia, Sapienza University of Rome, 2015.
+ * =============================================================== */
+
+#include "mcjithelper.hpp"
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Module.h>

@@ -38,7 +38,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/ManagedStatic.h>
 
-#include "MCJITHelper.hpp"
+#include "mcjithelper.hpp"
 #include "jitcompiler.h"
 #include "runtimebase.h"
 #include "interpreter.h"
@@ -49,6 +49,15 @@
 #include "transform_logic.h"
 #include "transform_split.h"
 
+
+/***************************************************************
+* Macro(s): SAVE_MODULE_IN_USE, SET_MODULE_IN_USE,
+*           RESTORE_MODULE_IN_USE
+* Purpose : Integration with MCJIT (multiple modules are needed)
+* Initial : Daniele Cono D'Elia on August 2015
+****************************************************************
+Revisions and bug fixes:
+*/
 #define     SAVE_MODULE_IN_USE()    llvm::Module* prevMCJITModuleInUse = s_MCJITModuleInUse
 #define     SET_MODULE_IN_USE(M)    s_MCJITModuleInUse = (M)
 #define     RESTORE_MODULE_IN_USE() s_MCJITModuleInUse = prevMCJITModuleInUse
@@ -73,17 +82,15 @@ ConfigVar JITCompiler::s_jitUseDirectCalls("jit_use_direct_calls", ConfigVar::BO
 ConfigVar JITCompiler::s_jitNoReadBoundChecks("jit_no_read_bound_checks", ConfigVar::BOOL, "false");
 ConfigVar JITCompiler::s_jitNoWriteBoundChecks("jit_no_write_bound_checks", ConfigVar::BOOL, "false");
 
-llvm::LLVMContext* JITCompiler::s_Context;
-
 // Void pointer type constant
 llvm::Type* JITCompiler::VOID_PTR_TYPE;
 
 /* DCD: initial MCJITHelper integration*/
 MCJITHelper* JITCompiler::s_JITHelper = NULL;
-JITCompiler::FPMMap JITCompiler::s_MapForOptFPMs;
-JITCompiler::FPMMap JITCompiler::s_MapForPrintFPMs;
+JITCompiler::FPMMap JITCompiler::s_FunctionPassManagerMap;
 
 // LLVM execution engine
+llvm::LLVMContext* JITCompiler::s_Context;
 llvm::ExecutionEngine* JITCompiler::s_pExecEngine = NULL;
 llvm::Module* JITCompiler::s_MCJITModuleInUse = NULL;
 llvm::DataLayout* JITCompiler::s_data_layout = NULL ;
@@ -116,7 +123,14 @@ llvm::Value* JITCompiler::createMulInstr(llvm::IRBuilder<>& builder, llvm::Value
 	return builder.CreateMul(pLVal,pRVal);
 }
 
-/* DCD: Initial MCJITHelper integration */
+/***************************************************************
+* Function: JITCompiler::getLLVMFunctionToCall()
+* Purpose : Check if functionToCall is defined in currentModule,
+*           and generate a prototype for it when it is not
+* Initial : Daniele Cono D'Elia on August 2015
+****************************************************************
+Revisions and bug fixes:
+*/
 llvm::Function* JITCompiler::getLLVMFunctionToCall(llvm::Function* functionToCall, llvm::Module* currentModule) {
     llvm::Function* F = functionToCall;
     if (F->getParent() != currentModule) {
@@ -124,7 +138,7 @@ llvm::Function* JITCompiler::getLLVMFunctionToCall(llvm::Function* functionToCal
            we already have a prototype for it in currentModule! */
         llvm::StringRef functionName = functionToCall->getName();
         F = currentModule->getFunction(functionName);
-        /* DCD: TODO check whether the prototype is the same? */
+        /* DCD: TODO assert check whether the prototype is the same? */
         if (F == nullptr) {
             F = llvm::Function::Create(functionToCall->getFunctionType(),
                                                         llvm::Function::ExternalLinkage,
@@ -135,7 +149,14 @@ llvm::Function* JITCompiler::getLLVMFunctionToCall(llvm::Function* functionToCal
     return F;
 }
 
-llvm::FunctionPassManager* JITCompiler::generateOptFPM(llvm::Module* M) {
+/***************************************************************
+* Function: JITCompiler::generateFPM()
+* Purpose : Generate a FunctionPassManager for the module
+* Initial : Daniele Cono D'Elia on August 2015
+****************************************************************
+Revisions and bug fixes:
+*/
+llvm::FunctionPassManager* JITCompiler::generateFPM(llvm::Module* M) {
     llvm::FunctionPassManager* FPM = new llvm::FunctionPassManager(M);
 
     FPM->add(llvm::createVerifierPass()); /* DCD: argument was llvm::PrintMessageAction */
@@ -149,38 +170,31 @@ llvm::FunctionPassManager* JITCompiler::generateOptFPM(llvm::Module* M) {
     FPM->add(llvm::createInstructionCombiningPass());
     // FPM->add(llvm::createBlockPlacementPass());/* DCD: removed from LLVM as MachineBlockPlacement supercedes it */
     FPM->add(llvm::createCFGSimplificationPass());
+    if (ConfigManager::s_verboseVar) {
+        FPM->add(llvm::createPrintFunctionPass(*&llvm::outs(), ""));
+    }
+    FPM->doInitialization();
 
     return FPM;
 }
 
-llvm::FunctionPassManager* JITCompiler::generatePrintFPM(llvm::Module* M) {
-    llvm::FunctionPassManager* printFPM = new llvm::FunctionPassManager(M);
-    printFPM->add(llvm::createPrintFunctionPass(*&llvm::outs(), ""));
-    return printFPM;
-}
-
-void JITCompiler::runOptFPM(llvm::Function* F) {
+/***************************************************************
+* Function: JITCompiler::runFPM()
+* Purpose : Pick/generate the FPM for the Module in which F is
+*           contained and optimize F
+* Initial : Daniele Cono D'Elia on August 2015
+****************************************************************
+Revisions and bug fixes:
+*/
+void JITCompiler::runFPM(llvm::Function* F) {
     llvm::Module* M = F->getParent();
     llvm::FunctionPassManager* FPM;
-    FPMMap::iterator it = s_MapForOptFPMs.find(M);
-    if (it != s_MapForOptFPMs.end()) {
+    FPMMap::iterator it = s_FunctionPassManagerMap.find(M);
+    if (it != s_FunctionPassManagerMap.end()) {
         FPM = it->second;
     } else {
-        FPM = generateOptFPM(M);
-        s_MapForOptFPMs.insert(std::pair<llvm::Module*, llvm::FunctionPassManager*>(M, FPM));
-    }
-    FPM->run(*F);
-}
-
-void JITCompiler::runPrintFPM(llvm::Function* F) {
-    llvm::Module* M = F->getParent();
-    llvm::FunctionPassManager* FPM;
-    FPMMap::iterator it = s_MapForPrintFPMs.find(M);
-    if (it != s_MapForPrintFPMs.end()) {
-        FPM = it->second;
-    } else {
-        FPM = generatePrintFPM(M);
-        s_MapForPrintFPMs.insert(std::pair<llvm::Module*, llvm::FunctionPassManager*>(M, FPM));
+        FPM = generateFPM(M);
+        s_FunctionPassManagerMap.insert(std::pair<llvm::Module*, llvm::FunctionPassManager*>(M, FPM));
     }
     FPM->run(*F);
 }
@@ -216,12 +230,13 @@ std::string CompError::toString() const
 * Purpose : Initialize the JIT compiler
 * Initial : Maxime Chevalier-Boisvert on March 9, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Integration with MCJIT by Daniele Cono
+D'Elia, August 2015.
 */
 void JITCompiler::initialize()
 {
     llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmPrinter(); /* DCD: fixes "Target does not support MC emission!" error */
+    llvm::InitializeNativeTargetAsmPrinter();
     //llvm::InitializeNativeTargetAsmParser();
 
     s_Context = new llvm::LLVMContext();
@@ -538,10 +553,7 @@ void JITCompiler::shutdown()
         if (s_pOsrInfoPass) delete s_pOsrInfoPass;
 
     // remove FPMs
-    for (auto &pair: s_MapForOptFPMs) {
-        delete pair.second;
-    }
-    for (auto &pair: s_MapForPrintFPMs) {
+    for (auto &pair: s_FunctionPassManagerMap) {
         delete pair.second;
     }
 
@@ -556,7 +568,8 @@ void JITCompiler::shutdown()
 * Purpose : Register a native function
 * Initial : Maxime Chevalier-Boisvert on March 9, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Integration with MCJIT by Daniele Cono
+D'Elia, August 2015.
 */
 void JITCompiler::regNativeFunc(
 	const std::string& name,
@@ -637,7 +650,8 @@ void JITCompiler::regNativeFunc(
 * Purpose : Register an optimized library function
 * Initial : Maxime Chevalier-Boisvert on July 29, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Integration with MCJIT by Daniele Cono
+D'Elia, August 2015.
 */
 void JITCompiler::regLibraryFunc(
 	const LibFunction* pLibFunc,
@@ -908,7 +922,8 @@ void JITCompiler::compFuncReturn(llvm::IRBuilder<>& exitBuilder, CompFunction& c
 * Purpose : Compile a program function given argument types
 * Initial : Maxime Chevalier-Boisvert on April 28, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Integration with MCJIT by Daniele Cono
+D'Elia, August 2015
 */
 void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& argTypeStr, llvm::Module* MCJITModule)
 {
@@ -1164,27 +1179,19 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 	entryBuilder.CreateBr(pSeqBlock);
 
         // Run the optimization passes on the function
-        runOptFPM(pFuncObj);
+        runFPM(pFuncObj);
 
         const std::string compiledFunctionName = pFuncObj->getName().str();
-        std::cerr << "[MCJIT] Asking the engine to JIT code for function " << compiledFunctionName << "\n";
+
+        if (ConfigManager::s_verboseVar) {
+            std::cerr << "[MCJIT] Asking LLVM to JIT code for function " << compiledFunctionName << "\n";
+        }
 
 	// Get a function pointer to the compiled function
-	//COMP_FUNC_PTR pFuncPtr = (COMP_FUNC_PTR)s_pExecEngine->getPointerToFunction(pFuncObj); /* DCD: deprecated method */
         COMP_FUNC_PTR pFuncPtr = (COMP_FUNC_PTR)s_pExecEngine->getFunctionAddress(compiledFunctionName);
 
 	// Store a pointer to the compiled function code
 	compVersion.pFuncPtr = pFuncPtr;
-
-	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
-	{
-		// Log that compilation is complete
-		std::cout << "Compilation complete" << std::endl;
-
-		// Run the pretty-printer pass on the function
-                runPrintFPM(pFuncObj);
-	}
 
         /* DCD: Initial MCJITHelper integration */
         RESTORE_MODULE_IN_USE();
@@ -2527,7 +2534,8 @@ llvm::Value* JITCompiler::changeStorageMode(
 * Purpose : Compile a call wrapper function
 * Initial : Maxime Chevalier-Boisvert on June 11, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Integration with MCJIT by Daniele Cono
+D'Elia, August 2015.
 */
 void JITCompiler::compWrapperFunc(
 	CompFunction& function,
@@ -2773,28 +2781,19 @@ void JITCompiler::compWrapperFunc(
 	}
 
         // Run the optimization passes on the function
-        runOptFPM(pFuncObj);
+        runFPM(pFuncObj);
 
         const std::string wrapperName = pFuncObj->getName().str();
 
-        std::cerr << "[MCJIT] Asking the engine to JIT code for wrapper function " << wrapperName << std::endl;
+        if (ConfigManager::s_verboseVar) {
+            std::cerr << "[MCJIT] Asking LLVM JIT code for wrapper function " << wrapperName << std::endl;
+        }
 
 	// Get a function pointer to the compiled function
-	//WRAPPER_FUNC_PTR pFuncPtr = (WRAPPER_FUNC_PTR)s_pExecEngine->getPointerToFunction(pFuncObj); /* DCD: deprecated method */
         WRAPPER_FUNC_PTR pFuncPtr = (WRAPPER_FUNC_PTR)s_pExecEngine->getFunctionAddress(wrapperName);
 
 	// Store a pointer to the compiled function code
 	version.pWrapperPtr = pFuncPtr;
-
-	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
-	{
-		// Log that compilation is complete
-		std::cout << "Done compiling wrapper func" << std::endl;
-
-		// Run the pretty-printer pass on the function
-                runPrintFPM(pFuncObj);
-	}
 
         /* DCD: Initial MCJITHelper integration */
         RESTORE_MODULE_IN_USE();

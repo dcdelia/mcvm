@@ -1,9 +1,9 @@
-/*
- * File:   MCJITHelper.hpp
- * Author: pctips
+/* ===============================================================
+ * Helper class to use LLVM MCJIT compiler in McVM. Some of this
+ * code is adapted from TinyVM (http://github.com/dcdelia/tinyvm)
  *
- * Created on 29 luglio 2015, 16.56
- */
+ * (C) Daniele Cono D'Elia, Sapienza University of Rome, 2015.
+ * =============================================================== */
 
 #ifndef MCJITHELPER_HPP
 #define	MCJITHELPER_HPP
