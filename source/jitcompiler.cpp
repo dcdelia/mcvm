@@ -170,7 +170,7 @@ llvm::FunctionPassManager* JITCompiler::generateFPM(llvm::Module* M) {
     FPM->add(llvm::createInstructionCombiningPass());
     // FPM->add(llvm::createBlockPlacementPass());/* DCD: removed from LLVM as MachineBlockPlacement supercedes it */
     FPM->add(llvm::createCFGSimplificationPass());
-    if (ConfigManager::s_verboseVar) {
+    if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
         FPM->add(llvm::createPrintFunctionPass(*&llvm::outs(), ""));
     }
     FPM->doInitialization();
@@ -634,7 +634,7 @@ void JITCompiler::regNativeFunc(
         pFuncObj->setDoesNotThrow();
 
     std::string nativeFunctionName = name; // name == pFuncObj->getName().ptr8()
-    if (ConfigManager::s_verboseVar) {
+    if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
         std::cerr << "[MCJIT] Registering native function " << nativeFunctionName << std::endl;
     }
 #if LLVMREV < 243589
@@ -1036,7 +1036,7 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 	PROF_STOP_TIMER(Profiler::ANA_TIME_TOTAL);
 
 	// If we are in verbose mode, log that the analyses are complete
-	if (ConfigManager::s_verboseVar)
+	if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar)
 		std::cout << "Analysis process complete" << std::endl;
 
 	// Create a name string for the function
@@ -1198,7 +1198,7 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 
         const std::string compiledFunctionName = pFuncObj->getName().str();
 
-        if (ConfigManager::s_verboseVar) {
+        if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
             std::cerr << "[MCJIT] Asking LLVM to JIT code for function " << compiledFunctionName << "\n";
         }
 
@@ -1433,8 +1433,8 @@ JITCompiler::VariableMap JITCompiler::matchBranchPoints(
 	llvm::BasicBlock* pDestBlock
 )
 {
-	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
+	// If we are in very verbose mode
+	if (ConfigManager::s_veryVerboseVar)
 	{
 		// Log that we are matching branch points
 		std::cout << "Matching branch points" << std::endl;
@@ -1640,8 +1640,8 @@ JITCompiler::VariableMap JITCompiler::matchBranchPoints(
 		pointBuilder.CreateBr(pDestBlock);
 	}
 
-	// If we are in verbose mode, log that we are done matching branch points
-	if (ConfigManager::s_verboseVar)
+	// If we are in very verbose mode, log that we are done matching branch points
+	if (ConfigManager::s_veryVerboseVar)
 		std::cout << "Done matching branch points" << std::endl;
 
 	// Return the final variable mapping
@@ -1670,7 +1670,7 @@ void JITCompiler::writeVariables(
 		SymbolExpr* pSymbol = *itr;
 
 		// If we are in verbose mode, log that we are writing the variable
-		if (ConfigManager::s_verboseVar)
+		if (ConfigManager::s_veryVerboseVar)
 			std::cout << "Writing var: " << pSymbol->toString() << std::endl;
 
 		// Attempt to find the variable in the variable map
@@ -1685,14 +1685,14 @@ void JITCompiler::writeVariables(
 			// Set the variable map binding to NULL
 			varMap[pSymbol].pValue = NULL;
 
-			// If we are in verbose mode, log that the variable was written
-			if (ConfigManager::s_verboseVar)
+			// If we are in very verbose mode, log that the variable was written
+			if (ConfigManager::s_veryVerboseVar)
 				std::cout << "Var written" << std::endl;
 		}
 		else
 		{
 			// If we are in verbose mode
-			if (ConfigManager::s_verboseVar)
+			if (ConfigManager::s_veryVerboseVar)
 			{
 				// Log whether or not there is an entry for the var
 				if (varItr == varMap.end())
@@ -1833,7 +1833,7 @@ JITCompiler::Value JITCompiler::readVariable(
 		evalArgs.push_back(pEnvObj);
 
 		// If we are in verbose mode, log the safe read
-		if (ConfigManager::s_verboseVar)
+		if (ConfigManager::s_veryVerboseVar)
 			std::cout << "Adding safe read of: " << pSymbol->toString() << std::endl;
 
 		// Lookup the variable in the environment
@@ -1852,7 +1852,7 @@ JITCompiler::Value JITCompiler::readVariable(
 		lookupArgs.push_back(pSymArg);
 
 		// If we are in verbose mode, log the unsafe read
-		if (ConfigManager::s_verboseVar)
+		if (ConfigManager::s_veryVerboseVar)
 			std::cout << "Adding unsafe read of: " << pSymbol->toString() << std::endl;
 
 		// Lookup the variable in the environment
@@ -1872,7 +1872,7 @@ JITCompiler::Value JITCompiler::readVariable(
 	);
 
 	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
+	if (ConfigManager::s_veryVerboseVar)
 	{
 		// Log the storage mode and object type
       std::cout << "Storage mode is: " << LLVMTypeToString(storageMode) << std::endl;
@@ -2085,9 +2085,8 @@ llvm::Value* JITCompiler::changeStorageMode(
 		return pCurVal;
 	}
 
-	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
-	{
+	// If we are in very verbose mode
+	if (ConfigManager::s_veryVerboseVar) {
 		// Log info about the storage mode conversion
 		std::cout << "Performing storage mode conversion: ";
 		std::cout << LLVMTypeToString(pCurVal->getType());
@@ -2581,8 +2580,9 @@ void JITCompiler::compWrapperFunc(
 	ProgFunction* pFunction = function.pProgFunc;
 
 	// If we are in verbose mode, log the wrapper function compilation
-	if (ConfigManager::s_verboseVar)
-		std::cout << "Compiling wrapper for function: \"" << pFunction->getFuncName() << "\"" << std::endl;
+	if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
+            std::cout << "Compiling wrapper for function: \"" << pFunction->getFuncName() << "\"" << std::endl;
+        }
 
 	// Create a name string for the function
 	std::string funcName = pFunction->getFuncName() + "_wrapper_" + ::toString((void*)version.pTypeInferInfo);
@@ -2802,7 +2802,7 @@ void JITCompiler::compWrapperFunc(
 
         const std::string wrapperName = pFuncObj->getName().str();
 
-        if (ConfigManager::s_verboseVar) {
+        if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
             std::cerr << "[MCJIT] Asking LLVM JIT code for wrapper function " << wrapperName << std::endl;
         }
 
@@ -3146,9 +3146,10 @@ llvm::BasicBlock* JITCompiler::compStatement(
 	BranchList& returnPoints
 )
 {
-	// If we are in verbose mode, log the statement compilation
-	if (ConfigManager::s_verboseVar)
-		std::cout << "Compiling statement: " << pStatement->toString() << std::endl;
+	// If we are in very verbose mode, log the statement compilation
+	if (ConfigManager::s_veryVerboseVar) {
+            std::cout << "Compiling statement: " << pStatement->toString() << std::endl;
+        }
 
 	// Switch on the statement type
 	switch (pStatement->getStmtType())
@@ -5287,9 +5288,10 @@ JITCompiler::Value JITCompiler::compBinaryOp(
 	llvm::BasicBlock* pExitBlock
 )
 {
-	// If we are in verbose mode, log the binary op code generation
-	if (ConfigManager::s_verboseVar)
-		std::cout << "Generating code for binary op" << std::endl;
+	// If we are in very verbose mode, log the binary op code generation
+	if (ConfigManager::s_veryVerboseVar) {
+            std::cout << "Generating code for binary op" << std::endl;
+        }
 
 	// Create a basic block for the left expression exit point
 	llvm::BasicBlock* pLeftExitBlock = llvm::BasicBlock::Create(*s_Context, "", version.pLLVMFunc);
@@ -5323,8 +5325,8 @@ JITCompiler::Value JITCompiler::compBinaryOp(
 		pRightExitBlock
 	);
 
-	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar) {
+	// If we are in very verbose mode
+	if (ConfigManager::s_veryVerboseVar) {
             // Log the operand types
             std::cout << "Left val type : " << LLVMTypeToString(leftVal.pValue->getType());
             std::cout << " (" << DataObject::getTypeName(leftVal.objType) << ")" << std::endl;
@@ -5353,8 +5355,8 @@ JITCompiler::Value JITCompiler::compBinaryOp(
 		if (outMode == llvm::Type::getDoubleTy(*s_Context) && !p2ScalarInstrF64 && !p2ScalarFuncF64)
 			outMode = llvm::Type::getInt1Ty(*s_Context);
 
-		// If we are in verbose mode, log the selected storage mode
-		if (ConfigManager::s_verboseVar) {
+		// If we are in very verbose mode, log the selected storage mode
+		if (ConfigManager::s_veryVerboseVar) {
                     std::cout << "Selected storage mode for bin op: " << LLVMTypeToString(outMode) << std::endl;
                 }
 
@@ -6114,9 +6116,10 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 	llvm::BasicBlock* pExitBlock
 )
 {
-	// If we are in verbose mode, log the parameterized expression compilation
-	if (ConfigManager::s_verboseVar)
+	// If we are in very verbose mode, log the parameterized expression compilation
+	if (ConfigManager::s_veryVerboseVar) {
 		std::cout << "Compiling parameterized expression: " << pParamExpr->toString() << std::endl;
+        }
 
 	// Get the symbol for the parameterized expression
 	SymbolExpr* pSymbol = pParamExpr->getSymExpr();
@@ -6913,9 +6916,10 @@ JITCompiler::ValueVector JITCompiler::compSymbolExpr(
 	// Attempt to find the symbol in the variable map
 	VariableMap::iterator mapItr = varMap.find(pSymbolExpr);
 
-	// If we are in verbose mode, log the symbol expression evaluation
-	if (ConfigManager::s_verboseVar)
-		std::cout << "Evaluating symbol expr: " << pSymbolExpr->toString() << std::endl;
+	// If we are in very verbose mode, log the symbol expression evaluation
+	if (ConfigManager::s_veryVerboseVar) {
+            std::cout << "Evaluating symbol expr: " << pSymbolExpr->toString() << std::endl;
+        }
 
 	// Declare a value vector to store the output
 	ValueVector valueVector;
@@ -6926,9 +6930,10 @@ JITCompiler::ValueVector JITCompiler::compSymbolExpr(
 	// If the variable is locally stored
 	if (mapItr != varMap.end() && mapItr->second.pValue != NULL)
 	{
-		// If we are in verbose mode, log that the symbol is stored locally
-		if (ConfigManager::s_verboseVar)
-			std::cout << "Symbol stored locally" << std::endl;
+		// If we are in very verbose mode, log that the symbol is stored locally
+		if (ConfigManager::s_veryVerboseVar) {
+                    std::cout << "Symbol stored locally" << std::endl;
+                }
 
 		// Retrieve its value from the variable map
 		valueVector.push_back(mapItr->second);
@@ -6938,9 +6943,10 @@ JITCompiler::ValueVector JITCompiler::compSymbolExpr(
 	}
 	else
 	{
-		// If we are in verbose mode, log that the symbol is not stored locally
-		if (ConfigManager::s_verboseVar)
+		// If we are in very verbose mode, log that the symbol is not stored locally
+		if (ConfigManager::s_veryVerboseVar) {
 			std::cout << "Symbol not stored locally" << std::endl;
+                }
 
 		// If we know for a fact that the value is in the environment
 		if (mapItr != varMap.end())
@@ -7058,9 +7064,10 @@ JITCompiler::Value JITCompiler::compSymbolEval(
 	// Attempt to find the symbol in the variable map
 	VariableMap::iterator mapItr = varMap.find(pSymbolExpr);
 
-	// If we are in verbose mode, log the symbol evaluation
-	if (ConfigManager::s_verboseVar)
-		std::cout << "Evaluating symbol: " << pSymbolExpr->toString() << std::endl;
+	// If we are in very verbose mode, log the symbol evaluation
+	if (ConfigManager::s_veryVerboseVar) {
+            std::cout << "Evaluating symbol: " << pSymbolExpr->toString() << std::endl;
+        }
 
 	// Declare a value to store the output
 	Value value;
@@ -7071,18 +7078,20 @@ JITCompiler::Value JITCompiler::compSymbolEval(
 	// If the variable is locally stored
 	if (mapItr != varMap.end() && mapItr->second.pValue != NULL)
 	{
-		// If we are in verbose mode, log that the symbol is stored locally
-		if (ConfigManager::s_verboseVar)
+		// If we are in very verbose mode, log that the symbol is stored locally
+		if (ConfigManager::s_veryVerboseVar) {
 			std::cout << "Symbol stored locally" << std::endl;
+                }
 
 		// Retrieve its value from the variable map
 		value = mapItr->second;
 	}
 	else
 	{
-		// If we are in verbose mode, log that the symbol is not stored locally
-		if (ConfigManager::s_verboseVar)
+		// If we are in very verbose mode, log that the symbol is not stored locally
+		if (ConfigManager::s_veryVerboseVar) {
 			std::cout << "Symbol not stored locally" << std::endl;
+                }
 
 		// If we know for a fact that the value is in the environment
 		if (mapItr != varMap.end())
@@ -8083,9 +8092,10 @@ JITCompiler::ValueVector JITCompiler::arrayExprFallback(
 	llvm::BasicBlock* pExitBlock
 )
 {
-	// If we are in verbose mode, log the array expression fallback
-	if (ConfigManager::s_verboseVar)
-		std::cout << "Compiling array expr fallback for: " << pExpression->toString() << std::endl;
+	// If we are in very verbose mode, log the array expression fallback
+	if (ConfigManager::s_veryVerboseVar) {
+            std::cout << "Compiling array expr fallback for: " << pExpression->toString() << std::endl;
+        }
 
 	// Create an IR builder for the entry block
 	llvm::IRBuilder<> entryBuilder(pEntryBlock);
@@ -8242,9 +8252,10 @@ JITCompiler::Value JITCompiler::exprFallback(
 	llvm::BasicBlock* pExitBlock
 )
 {
-	// If we are in verbose mode, log the expression fallback
-	if (ConfigManager::s_verboseVar)
+	// If we are in very verbose mode, log the expression fallback
+	if (ConfigManager::s_veryVerboseVar) {
 		std::cout << "Generating expr fallback for: \"" << pExpression->toString() << "\"" << std::endl;
+        }
 
 	// Create an IR builder for the entry block
 	llvm::IRBuilder<> entryBuilder(pEntryBlock);
@@ -8506,21 +8517,20 @@ llvm::CallInst* JITCompiler::createNativeCall(
 	// Get a reference to the native function object
 	const NativeFunc& nativeFunc = s_nativeMap[pNativeFunc];
 
-	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
-	{
-		// Log the native call creation
-		std::cout << "Creating native call to: " << nativeFunc.name << "(";
+	// If we are in very verbose mode
+	if (ConfigManager::s_veryVerboseVar) {
+            // Log the native call creation
+            std::cout << "Creating native call to: " << nativeFunc.name << "(";
 
-		// Log the argument types
-                size_t numArgs = arguments.size();
-		for (size_t i = 0; i < numArgs; ++i) {
-                    std::cout << LLVMTypeToString(arguments[i]->getType());
-                    if (i != numArgs - 1) {
-                        std::cout << ", ";
-                    }
+            // Log the argument types
+            size_t numArgs = arguments.size();
+            for (size_t i = 0; i < numArgs; ++i) {
+                std::cout << LLVMTypeToString(arguments[i]->getType());
+                if (i != numArgs - 1) {
+                    std::cout << ", ";
                 }
-                std::cout << ")" << std::endl;
+            }
+            std::cout << ")" << std::endl;
         }
 
 

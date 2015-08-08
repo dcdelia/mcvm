@@ -77,22 +77,22 @@ void Interpreter::initialize()
 Revisions and bug fixes:
 */
 void Interpreter::runCommand(const std::string& commandString)
-{	
+{
 	if (!commandString.empty())
 	{
 		// Attempt to parse the commandString
 		CompUnits nodes = loadSrcText(commandString, "input_command");
-	
+
 		// If the front node is not a function
 		if (nodes.front()->getType() != IIRNode::FUNCTION)
 		{
 			// Throw an exception
 			throw RunError("invalid IIR node produced");
 		}
-	
+
 		// Get a typed pointer to the function
 		ProgFunction* pFuncNode = (ProgFunction*)nodes.front();
-	
+
 		// If the node is a script
 		if (pFuncNode->isScript())
 		{
@@ -148,10 +148,10 @@ ArrayObj* Interpreter::callFunction(Function* pFunction, ArrayObj* pArguments, s
 		{
 			// Get a typed pointer to the program function
 			ProgFunction* pProgFunc = (ProgFunction*)pFunction;
-			
+
 			// If JIT compilation is enabled and this is not a script nor a closure
 			if (JITCompiler::s_jitEnableVar.getBoolValue() == true &&
-				pProgFunc->isScript() == false && 
+				pProgFunc->isScript() == false &&
 				pProgFunc->isClosure() == false
 			)
 			{
@@ -267,7 +267,7 @@ ArrayObj* Interpreter::callFunction(Function* pFunction, ArrayObj* pArguments, s
 
 				// Compute the effective number of output arguments
 				size_t numOutArgs = std::min(std::max(size_t(1), nargout), outParams.size());
-				
+
 				// For each output argument
 				for (size_t i = 0; i < numOutArgs; ++i)
 				{
@@ -277,13 +277,13 @@ ArrayObj* Interpreter::callFunction(Function* pFunction, ArrayObj* pArguments, s
 					// Lookup the value in the calling environment
 					DataObject* pValue = Environment::lookup(pCallEnv, pSymbol);
 
-					// If the symbol was not found 
+					// If the symbol was not found
 					if (pValue == NULL)
 					{
 						// If the required argument count is 0, break out of the loop
 						if (nargout == 0)
 							break;
-						
+
 						// Throw an exception
 						throw RunError("return value unassigned: \"" + pSymbol->getSymName() + "\"");
 					}
@@ -478,24 +478,24 @@ void Interpreter::execStatement(const Statement* pStmt, Environment* pEnv)
 				}
 			}
 		}
-		
+
 		// If type information profiling should be performed
 		if (/*s_viewedStmtSet.find(pStmt) == s_viewedStmtSet.end() &&*/
-			s_profTypeInfer.getBoolValue() == true && 
+			s_profTypeInfer.getBoolValue() == true &&
 			pStmt->getStmtType() != Statement::LOOP &&
 			pStmt->getStmtType() != Statement::IF_ELSE)
 		{
 			// Insert the statement into the viewed set
 			//s_viewedStmtSet.insert(pStmt);
-			
+
 			// Get the variable type map for this statement
 			TypeInfoMap::const_iterator mapItr = funcTypeInfo.pTypeInferInfo->preTypeMap.find(pStmt);
 			assert(mapItr != funcTypeInfo.pTypeInferInfo->preTypeMap.end());
 			const VarTypeMap& varTypeMap = mapItr->second;
-			
+
 			// Get the variable uses for this statement
 			Expression::SymbolSet stmtUses = pStmt->getSymbolUses();
-			
+
 			// For each use of the statement
 			for (Expression::SymbolSet::const_iterator itr = stmtUses.begin(); itr != stmtUses.end(); ++itr)
 			{
@@ -508,54 +508,54 @@ void Interpreter::execStatement(const Statement* pStmt, Environment* pEnv)
 
 				// Lookup the symbol in the environment
 				DataObject* pObject = Environment::lookup(pEnv, pVarSymbol);
-				
+
 				// If the symbol was not found, skip it
 				if (pObject == NULL)
 					continue;
-				
+
 				// Build a type info object from the object
 				TypeInfo typeInfo(pObject, true, false);
-				
+
 				// Increment number of var uses
 				PROF_INCR_COUNTER(Profiler::TYPE_NUM_TYPE_SETS);
-				
+
 				// If the object is a scalar
 				if (typeInfo.isScalar())
 				{
 					// Increment object is actual scalar count
 					PROF_INCR_COUNTER(Profiler::TYPE_NUM_SCALARS);
 				}
-				
+
 				// If the object is a matrix (but not a cell array)
 				if (typeInfo.getObjType() >= DataObject::MATRIX_I32 && typeInfo.getObjType() <= DataObject::CHARARRAY)
 				{
 					// Increment matrix count
-					PROF_INCR_COUNTER(Profiler::TYPE_NUM_MATRICES);					
+					PROF_INCR_COUNTER(Profiler::TYPE_NUM_MATRICES);
 				}
-				
+
 				// If the type set is empty
 				if (typeSet.empty())
 				{
 					// Increment empty set count
 					PROF_INCR_COUNTER(Profiler::TYPE_NUM_EMPTY_SETS);
 				}
-				
+
 				// If the type set contains one element
 				else if (typeSet.size() == 1)
 				{
 					// Increment set with one element count
 					PROF_INCR_COUNTER(Profiler::TYPE_NUM_UNARY_SETS);
-					
+
 					// Get the determined type of the object
 					const TypeInfo& detType = *typeSet.begin();
-					
+
 					// If the determined type is scalar
 					if (detType.isScalar())
 					{
 						// Increment determined type is scalar count
-						PROF_INCR_COUNTER(Profiler::TYPE_NUM_KNOWN_SCALARS);	
+						PROF_INCR_COUNTER(Profiler::TYPE_NUM_KNOWN_SCALARS);
 					}
-					
+
 					// If the size is known
 					if (detType.getSizeKnown())
 					{
@@ -563,7 +563,7 @@ void Interpreter::execStatement(const Statement* pStmt, Environment* pEnv)
 						PROF_INCR_COUNTER(Profiler::TYPE_NUM_KNOWN_SIZE);
 					}
 				}
-			}			
+			}
 		}
 	}
 
@@ -636,7 +636,7 @@ void Interpreter::execStatement(const Statement* pStmt, Environment* pEnv)
 			throw RunError("unexpected statement type", pStmt);
 		}
 	}
-		
+
 	// If type inference validation is enabled
 	if (s_validateTypes.getBoolValue() == true && s_typeInfoStack.empty() == false)
 	{
@@ -663,7 +663,7 @@ void Interpreter::execStatement(const Statement* pStmt, Environment* pEnv)
 			// Get a reference to the count
 			countVal = funcTypeInfo.validCountMap[pStmt];
 		}
-		
+
 		// If the validation should be run
 		if (countVal < 128)
 		{
@@ -730,7 +730,7 @@ void Interpreter::execStatement(const Statement* pStmt, Environment* pEnv)
 				}
 			}
 		}
-	}	
+	}
 }
 
 /***************************************************************
@@ -777,15 +777,15 @@ void Interpreter::evalAssignStmt(const AssignStmt* pStmt, Environment* pEnv)
 		// Evaluate the parameterized expression directly to preserve possible multiple outputs
 		pResult = evalParamExpr((ParamExpr*)pRightExpr, pEnv, leftExprs.size());
 	}
-	
+
 	// Otherwise, if the right expression is a symbol expression
 	else if (pRightExpr->getExprType() == Expression::SYMBOL)
 	{
 		// Evaluate the symbol expression directly to preserve possible multiple outputs
 		// NOTE: this is because the symbol expression may be a function call
-		pResult = evalSymbolExpr((SymbolExpr*)pRightExpr, pEnv, leftExprs.size());		
+		pResult = evalSymbolExpr((SymbolExpr*)pRightExpr, pEnv, leftExprs.size());
 	}
-	
+
 	// Otherwise, for any other type of right expression
 	else
 	{
@@ -1044,7 +1044,7 @@ ArrayObj* Interpreter::evalIndexArgs(const Expression::ExprVector& argVector, En
 {
 	// Create an array object for the arguments
 	ArrayObj* pArguments = new ArrayObj(argVector.size());
-	
+
 	// For each argument
 	for (Expression::ExprVector::const_iterator itr = argVector.begin(); itr != argVector.end(); ++itr)
 	{
@@ -1069,7 +1069,7 @@ ArrayObj* Interpreter::evalIndexArgs(const Expression::ExprVector& argVector, En
 		// Add the value to the argument array
 		ArrayObj::addObject(pArguments, pValue);
 	}
-	
+
 	// Return the evaluated arguments
 	return pArguments;
 }
@@ -1085,32 +1085,32 @@ void Interpreter::evalExprStmt(const ExprStmt* pStmt, Environment* pEnv)
 {
 	// Get a pointer to the expression
 	Expression* pExpr = pStmt->getExpression();
-	
+
 	// Declare a variable to store the evaluation result
 	DataObject* pResult;
-	
+
 	// If the expression is a parameterized expression
 	if (pExpr->getExprType() == Expression::PARAM)
 	{
 		// Evaluate the parameterized expression directly with zero arguments required
 		pResult = evalParamExpr((ParamExpr*)pExpr, pEnv, 0);
 	}
-	
+
 	// Otherwise, if the expression is a symbol expression
 	else if (pExpr->getExprType() == Expression::SYMBOL)
 	{
 		// Evaluate the symbol expression directly with zero arguments required
 		// NOTE: this is because the symbol expression may be a function call
-		pResult = evalSymbolExpr((SymbolExpr*)pExpr, pEnv, 0);		
+		pResult = evalSymbolExpr((SymbolExpr*)pExpr, pEnv, 0);
 	}
-	
+
 	// Otherwise, for any other type of expression
 	else
 	{
 		// Evaluate the right side expression generically
 		pResult = evalExpression(pExpr, pEnv);
 	}
-	
+
 	// If output should be suppressed, stop
 	if (pStmt->getSuppressFlag())
 		return;
@@ -1124,7 +1124,7 @@ void Interpreter::evalExprStmt(const ExprStmt* pStmt, Environment* pEnv)
 		// If the array object has nonzero size, use the first element as the result
 		if (pArrayObj->getSize() > 0)
 			pResult = pArrayObj->getObject(0);
-		
+
 		// Otherwise, if the array object has size zero, return early
 		else if (pArrayObj->getSize() == 0)
 			return;
@@ -1508,7 +1508,7 @@ DataObject* Interpreter::evalUnaryExpr(const UnaryOpExpr* pExpr, Environment* pE
 				// Get the conjugate transpose the matrix
 				return MatrixC128Obj::conjTranspose(pMatrix);
 			}
-			
+
 			// If the value is a cell array
 			else if (pArgVal->getType() == DataObject::CELLARRAY)
 			{
@@ -1517,7 +1517,7 @@ DataObject* Interpreter::evalUnaryExpr(const UnaryOpExpr* pExpr, Environment* pE
 
 				// Get the conjugate transpose the matrix
 				return CellArrayObj::transpose(pMatrix);
-			}			
+			}
 		}
 		break;
 
@@ -1627,7 +1627,7 @@ DataObject* Interpreter::evalBinaryExpr(const BinaryOpExpr* pExpr, Environment* 
 			// Evaluate the left and right expressions
 			DataObject* pLeftVal = evalExpression(pLeftExpr, pEnv);
 			DataObject* pRightVal = evalExpression(pRightExpr, pEnv);
-			
+
 			// Perform the array multiplication
 			return arrayArithOp<MultOp>(pLeftVal, pRightVal);
 		}
@@ -1639,7 +1639,7 @@ DataObject* Interpreter::evalBinaryExpr(const BinaryOpExpr* pExpr, Environment* 
 			// Evaluate the left and right expressions
 			DataObject* pLeftVal = evalExpression(pLeftExpr, pEnv);
 			DataObject* pRightVal = evalExpression(pRightExpr, pEnv);
-			
+
 			// Perform the right division operation
 			return matrixRightDivOp(pLeftVal, pRightVal);
 		}
@@ -1856,7 +1856,7 @@ DataObject* Interpreter::evalBinaryExpr(const BinaryOpExpr* pExpr, Environment* 
 			// Evaluate the left and right expressions
 			DataObject* pLeftVal = evalExpression(pLeftExpr, pEnv);
 			DataObject* pRightVal = evalExpression(pRightExpr, pEnv);
-			
+
 			// Perform the array OR operation
 			return matrixLogicOp<OrOp>(pLeftVal, pRightVal);
 		}
@@ -2253,7 +2253,7 @@ DataObject* Interpreter::evalParamExpr(const ParamExpr* pExpr, Environment* pEnv
 				ProgFunction::setLocalEnv(pProgFunc, pEnv);
 			}
 		}
-		
+
 		// Call the function
 		ArrayObj* pResult = callFunction(pFunction, pArguments, nargout);
 
@@ -2402,7 +2402,7 @@ DataObject* Interpreter::evalFnHandleExpr(const FnHandleExpr* pExpr, Environment
 
 			// Set the closure flag
 			pProgFunc->setClosure(true);
-			
+
 			// Update the function pointer
 			pFunction = pProgFunc;
 		}
@@ -2489,7 +2489,7 @@ DataObject* Interpreter::evalSymbolExpr(const SymbolExpr* pExpr, Environment* pE
 		// Note: this is done to handle calls without explicit parenthesizing
 		pResult = callFunction(pFunction, new ArrayObj(), nargout);
 	}
-	
+
 	// Return the evaluation result
 	return pResult;
 }
@@ -2505,12 +2505,12 @@ DataObject* Interpreter::evalSymbol(const SymbolExpr* pExpr, Environment* pEnv)
 {
 	// Lookup the symbol
 	DataObject* pObject = Environment::lookup(pEnv, pExpr);
-	
+
 	// If the symbol is not found
 	if (pObject == NULL)
 	{
 		// If verbose mode is enabled
-		if (ConfigManager::s_verboseVar.getBoolValue())
+		if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar)
 		{
 			// Log that the symbol was not found
 			std::cout << "Symbol not found: \"" + pExpr->toString() + "\"" << std::endl;
@@ -2544,7 +2544,7 @@ Revisions and bug fixes:
 CompUnits Interpreter::loadMFile(const std::string& fileName, const bool bindScript)
 {
 	// If verbose mode is enabled
-	if (ConfigManager::s_verboseVar.getBoolValue())
+	if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar)
 	{
 		// Log that we are loading an m-file
 		std::cout << "Loading m-file: \"" << fileName << "\"" << std::endl;
@@ -2669,7 +2669,7 @@ CompUnits Interpreter::loadCompUnits(CompUnits& nodes, const std::string& nameTo
 			ProgFunction::setLocalEnv(pFunction, &s_globalEnv);
 		}
 		else
-		{			
+		{
 			// Build the local environment for this function
 			buildLocalEnv(pFunction, pLocalEnv);
 		}
@@ -2690,7 +2690,7 @@ void Interpreter::buildLocalEnv(ProgFunction* pFunction, Environment* pLocalEnv)
 {
 	// Increment the function loaded count
 	PROF_INCR_COUNTER(Profiler::FUNC_LOAD_COUNT);
-	
+
 	// Create a copy of the local environment for this function
 	Environment* pFuncEnv = pLocalEnv->copy();
 
@@ -2709,19 +2709,19 @@ void Interpreter::buildLocalEnv(ProgFunction* pFunction, Environment* pLocalEnv)
 
 	// Set the local environment for this function
 	ProgFunction::setLocalEnv(pFunction, pFuncEnv);
-	
+
 	// For each nested function
 	for (ProgFunction::FuncVector::const_iterator nestItr = nestedFuncs.begin(); nestItr != nestedFuncs.end(); ++nestItr)
 	{
 		// Get a pointer to the nested function
 		ProgFunction* pFunction = *nestItr;
-		
+
 		// Create an extension of the local environment for this function
 		Environment* pNestedEnv = Environment::extend(pLocalEnv);
 
 		// Build the local environment for this function
 		buildLocalEnv(pFunction, pNestedEnv);
-	}	
+	}
 }
 
 /***************************************************************

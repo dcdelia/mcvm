@@ -41,29 +41,29 @@ namespace XML
 		// Return a string with the line and column numbers
 		return "(" + ::toString(m_line) + "," + ::toString(m_column) + ")";
 	}
-	
+
 	/***************************************************************
 	* Function: ParseError::toString()
 	* Purpose : Produce a string representation of the error
 	* Initial : Maxime Chevalier-Boisvert on October 20, 2008
 	****************************************************************
 	Revisions and bug fixes:
-	*/	
+	*/
 	std::string ParseError::toString() const
 	{
 		// Create a string to store the output
 		std::string output;
-		
+
 		// If a text position was specified
 		if (m_textPos.getLine() != 0)
 		{
 			// Add the text position to the output
 			output += m_textPos.toString() + " ";
 		}
-		
+
 		// Add the error text to the output
 		output += m_errorText;
-		
+
 		// Return the string representation
 		return output;
 	}
@@ -104,7 +104,7 @@ namespace XML
 		// Return the string representation
 		return output;
 	}
-	
+
 	/***************************************************************
 	* Function: RawData::toString()
 	* Purpose : Produce a string representation of this node
@@ -141,7 +141,7 @@ namespace XML
 		// Return the string representation
 		return output;
 	}
-	
+
 	/***************************************************************
 	* Function: Element::~Element()
 	* Purpose : Destructor for the XML element class
@@ -155,7 +155,7 @@ namespace XML
 		for (std::vector<Node*>::const_iterator itr = m_children.begin(); itr != m_children.end(); ++itr)
 			delete (*itr);
 	}
-	
+
 	/***************************************************************
 	* Function: Element::setStringAttrib()
 	* Purpose : Set the value of an attribute
@@ -189,7 +189,7 @@ namespace XML
 			throw ParseError("Attribute \"" + name + "\" not found in \"" + m_name + "\" tag", m_textPos);
 
 		// Return the attribute's value
-		return attribItr->second;	
+		return attribItr->second;
 	}
 
 	/***************************************************************
@@ -203,7 +203,7 @@ namespace XML
 	{
 		// Declare a stringstream object for parsing
 		std::stringstream stringStream;
-		
+
 		// Attempt to find the string value of the attribute
 		std::string stringAttrib = getStringAttrib(name);
 
@@ -231,7 +231,7 @@ namespace XML
 	{
 		// Declare a stringstream object for parsing
 		std::stringstream stringStream;
-		
+
 		// Attempt to find the string value of the attribute
 		std::string stringAttrib = getStringAttrib(name);
 
@@ -245,7 +245,7 @@ namespace XML
 		stringStream >> intValue;
 
 		// Return the integer value
-		return intValue;		
+		return intValue;
 	}
 
 	/***************************************************************
@@ -271,7 +271,7 @@ namespace XML
 		// Return the boolean value
 		return boolValue;
 	}
-	
+
 	/***************************************************************
 	* Function: Element::getChildNode()
 	* Purpose : Get a specific child node
@@ -284,11 +284,11 @@ namespace XML
 		// If the index is not valid, throw an exception
 		if (index >= m_children.size())
 			throw ParseError("Missing child element", m_textPos);
-		
+
 		// Return a pointer to the child element
 		return m_children[index];
 	}
-	
+
 	/***************************************************************
 	* Function: Element::getChildElement()
 	* Purpose : Get a child node known to be an element
@@ -300,18 +300,18 @@ namespace XML
 	{
 		// Get a pointer to the child element
 		Node* pChild = getChildNode(index);
-		
+
 		// If this is not an element, throw an exception
 		if (pChild->getType() != ELEMENT)
 			throw ParseError(
 				"Invalid node type for child #" + ::toString(index+1) + ", expected child element",
 				m_textPos
 			);
-		
+
 		// Return a pointer to an XML element
-		return (Element*)pChild;	
+		return (Element*)pChild;
 	}
-	
+
 	/***************************************************************
 	* Function: Element::copy()
 	* Purpose : Recursively copy this node or subtree
@@ -323,11 +323,11 @@ namespace XML
 	{
 		// Create a vector to store copies of child nodes
 		std::vector<Node*> childCopies;
-		
+
 		// Copy all the child nodes
 		for (std::vector<Node*>::const_iterator itr = m_children.begin(); itr != m_children.end(); ++itr)
 			childCopies.push_back((*itr)->copy());
-		
+
 		// Create a copy of this element
 		return new Element(
 			m_name,
@@ -337,7 +337,7 @@ namespace XML
 			m_leaf
 		);
 	}
-	
+
 	/***************************************************************
 	* Function: Element::toString()
 	* Purpose : Produce a string representation of an XML element
@@ -419,7 +419,7 @@ namespace XML
 		// Return the string representation
 		return output;
 	}
-	
+
 	/***************************************************************
 	* Function: Declaration::toString()
 	* Purpose : Produce a string representation of this node
@@ -466,7 +466,7 @@ namespace XML
 		// Return the string representation
 		return output;
 	}
-	
+
 	/***************************************************************
 	* Function: Document::Document()
 	* Purpose : Copy constructor for document class
@@ -479,7 +479,7 @@ namespace XML
 		// Use the assignment operator implementation
 		*this = document;
 	}
-	
+
 	/***************************************************************
 	* Function: Document::toString()
 	* Purpose : Produce a string representation of the document
@@ -491,33 +491,33 @@ namespace XML
 	{
 		// Declare a string to store the output
 		std::string output;
-		
+
 		// If the declaration is present
 		if (m_pDecl)
 		{
 			// Add the declaration to the output
 			output += m_pDecl->toString(true);
-			
+
 			// If indentation is enabled, add a newline
 			if (indent)
 				output += "\n";
 		}
-		
+
 		// If the XML tree is present
 		if (m_pTree)
 		{
 			// Add the tree to the output
 			output += m_pTree->toString(true);
-			
+
 			// If indentation is enabled, add a newline
 			if (indent)
 				output += "\n";
 		}
-		
+
 		// Return the output
 		return output;
 	}
-	
+
 	/***************************************************************
 	* Function: Document::operator = ()
 	* Purpose : Assignment operator
@@ -529,14 +529,14 @@ namespace XML
 	{
 		// Copy the document declaration, if present
 		m_pDecl = document.m_pDecl? (Declaration*)document.m_pDecl->copy():NULL;
-		
+
 		// Copy the XML tree, if present
 		m_pTree = document.m_pTree? (Element*)document.m_pTree->copy():NULL;
-		
+
 		// Return a reference to this object
 		return *this;
 	}
-	
+
 	/***************************************************************
 	* Function: Parser::parseString()
 	* Purpose : Parse an XML input string
@@ -555,21 +555,20 @@ namespace XML
 		// streamline the input raw xml string
 		std::string input = streamline(xmlString, positions);
 
-		// If the verbose output flag is set
-		if (ConfigManager::s_verboseVar.getBoolValue() == true)
-		{
+		// If the very verbose output flag is set
+		if (ConfigManager::s_veryVerboseVar) {
 			// Output the raw and streamlined input
 			std::cout << "Raw input: " << std::endl << xmlString;
 			std::cout << "Streamlined input: \"" << input << "\"" << std::endl;
 		}
-		
+
 		// Parse the XML declaration, if present
 		Declaration* pDecl = parseDeclaration(input, charIndex, positions);
-		
+
 		// Parse the XML element tree
 		Element* pTree = parseElement(input, charIndex, positions);
 
-		
+
 		// Return the parsed XML document
 		return Document(pDecl, pTree);
 	}
@@ -646,15 +645,15 @@ namespace XML
 
 		// Write the string representation to the output file
 		size_t result = fwrite(xmlString.c_str(), xmlString.length(), 1, pXMLFile);
-		
+
 		// Close the output file
 		fclose(pXMLFile);
-		
+
 		// If the write operation failed, throw an exception
 		if (result != 1)
 			throw ParseError("Could not write to output file");
 	}
-	
+
 	/***************************************************************
 	* Function: Parser::streamline()
 	* Purpose : Streamline an XML code string
@@ -669,24 +668,24 @@ namespace XML
 
 		// reserve space in the string
 		output.reserve(rawInput.length());
-		
+
 		// Declare characters for stream processing
 		unsigned char lastChar = '\0';
 		unsigned char thisChar = '\0';
 		unsigned char nextChar = '\0';
-		
+
 		// Variable to tell if we are in a CDATA region
 		bool inCDATA = false;
-		
+
 		// Variable to tell if we are in a comment
 		bool inComment = false;
-		
+
 		// Variable to indicate the current line number
 		size_t lineNumber = 1;
 
 		// Variable to indicate the start of the current line
 		size_t lineStart = 0;
-		
+
 		// For each character of the input
 		for (size_t charIndex = 0; charIndex < rawInput.length(); ++charIndex)
 		{
@@ -696,38 +695,38 @@ namespace XML
 
 			// Construct the text position of the current character
 			TextPos charPos(lineNumber, charIndex - lineStart + 1);
-			
+
 			// If this character is a newline
 			if (thisChar == '\n')
 			{
 				// Increment the line number
 				++lineNumber;
-				
+
 				// Store the line start index
 				lineStart = charIndex + 1;
 			}
-			
+
 			// If this is the start of a comment
 			if (tokenMatch(rawInput, charIndex, "<!--") && !inCDATA && !inComment)
 			{
 				// We are now in a comment
 				inComment = true;
-				
+
 				// Move past the comment opening
 				charIndex += 3;
 				continue;
 			}
-			
+
 			// If this is the end of a comment
 			if (tokenMatch(rawInput, charIndex, "-->") && inComment)
 			{
 				// We are no longer in a comment
 				inComment = false;
-				
+
 				// Move past the comment closing
 				charIndex += 2;
 				continue;
-			}			
+			}
 
 			// If this is the start of a CDATA region
 			if (tokenMatch(rawInput, charIndex, "<![CDATA[") && !inCDATA && !inComment)
@@ -735,21 +734,21 @@ namespace XML
 				// We are now in a CDATA region
 				inCDATA = true;
 			}
-			
+
 			// If this is the end of a CDATA region
 			if (tokenMatch(rawInput, charIndex, "]]>") && inCDATA)
 			{
 				// We are no longer in a CDATA region
 				inCDATA = false;
 			}
-			
+
 			// If we are inside a comment
 			if (inComment)
 			{
 				// Skip this character
 				continue;
-			}			
-			
+			}
+
 			// If we are not in a CDATA region
 			if (!inCDATA)
 			{
@@ -759,21 +758,21 @@ namespace XML
 					// Consider it a space
 					thisChar = ' ';
 				}
-	
+
 				// If the next character is whitespace
 				if (isspace(nextChar))
 				{
 					// Consider it a space
 					nextChar = ' ';
 				}
-	
+
 				// If this character is whitespace
 				if (thisChar == ' ')
 				{
-					// If the next char is whitespace, 
+					// If the next char is whitespace,
 					// or the last was an opening delimiter or a space,
 					// or the next is a closing delimiter
-					if (nextChar == ' ' || 
+					if (nextChar == ' ' ||
 						lastChar == '<' || lastChar == '>' || lastChar == ' ' ||
 						nextChar == '<' || nextChar == '>' || nextChar == '\0')
 					{
@@ -788,21 +787,21 @@ namespace XML
 
 			// Store the last character added
 			lastChar = thisChar;
-			
+
 			// Store the text position of this character
 			positions.push_back(charPos);
 		}
 
 		// Add a final text position for the string terminator
 		positions.push_back(TextPos(lineNumber, rawInput.length() - lineStart + 1));
-		
+
 		// Ensure that there is a position for each character in the output
 		assert (output.length() + 1 == positions.size());
-		
+
 		// Return the streamlined XML stream
 		return output;
 	}
-	
+
 	/***************************************************************
 	* Function: Parser::parseEscapeSeq()
 	* Purpose : Streamline an XML code string
@@ -940,8 +939,8 @@ namespace XML
 
 		// Return the tag name
 		return tagName;
-	}	
-	
+	}
+
 	/***************************************************************
 	* Function: Parser::parseAttribute()
 	* Purpose : Parse an XML attribute-value pairs
@@ -950,7 +949,7 @@ namespace XML
 	Revisions and bug fixes:
 	*/
 	std::pair<std::string, std::string> Parser::parseAttribute(const std::string& xmlString, size_t& charIndex, const PosVector& positions)
-	{		
+	{
 		// If the first character is not alphanumeric
 		if (!isalnum(xmlString[charIndex]))
 		{
@@ -1094,7 +1093,7 @@ namespace XML
 		// Return a pair containing the attribute name and value
 		return std::pair<std::string, std::string>(attribName, attribValue);
 	}
-	
+
 	/***************************************************************
 	* Function: Parser::parseDeclaration()
 	* Purpose : Parse an XML declaration node
@@ -1113,7 +1112,7 @@ namespace XML
 
 		// Move past the declaration opening
 		charIndex += 5;
-		
+
 		// Declare variables for the current and next characters
 		unsigned char thisChar;
 		unsigned char nextChar;
@@ -1164,7 +1163,7 @@ namespace XML
 					// Throw an exception
 					throw ParseError("Duplicate attribute name: " + attribute.first, positions[charIndex]);
 				}
-				
+
 				// Add this attribute to the map
 				attributes[attribute.first] = attribute.second;
 
@@ -1179,7 +1178,7 @@ namespace XML
 		// Create and return a new XML declaration node with the parsed information
 		return new Declaration(attributes);
 	}
-	
+
 	/***************************************************************
 	* Function: Parser::parseNode()
 	* Purpose : Parse an XML data node
@@ -1195,22 +1194,22 @@ namespace XML
 			// Parse the CDATA region
 			return parseRawData(xmlString, charIndex, positions);
 		}
-		
+
 		// If this is the beginning of an XML element
 		else if (tokenMatch(xmlString, charIndex, "<"))
 		{
 			// Parse the XML element recursively
 			return parseElement(xmlString, charIndex, positions);
 		}
-		
+
 		// Otherwise, if this is a text region
 		else
-		{			
+		{
 			// Parse the text
 			return parseText(xmlString, charIndex, positions);
 		}
 	}
-	
+
 	/***************************************************************
 	* Function: Parser::parseElement()
 	* Purpose : Parse an XML element
@@ -1229,7 +1228,7 @@ namespace XML
 
 		// Get the current text position
 		const TextPos& textPos = positions[charIndex];
-		
+
 		// Move to the next character
 		++charIndex;
 
@@ -1308,7 +1307,7 @@ namespace XML
 					// Throw an exception
 					throw ParseError("Duplicate attribute name: " + attribute.first, positions[charIndex]);
 				}
-				
+
 				// Add this attribute to the map
 				attributes[attribute.first] = attribute.second;
 
@@ -1385,7 +1384,7 @@ namespace XML
 		// Create and return a new XML element with the parsed information
 		return new Element(name, attributes, children, textPos, isLeaf);
 	}
-	
+
 	/***************************************************************
 	* Function: Parser::parseRawData()
 	* Purpose : Parse an XML CDATA region
@@ -1401,13 +1400,13 @@ namespace XML
 			// Throw an exception
 			throw ParseError("Invalid CDATA region opening", positions[charIndex]);
 		}
-		
+
 		// Move past the CDATA opening
 		charIndex += 9;
-		
+
 		// Declare a string to store the region contents
 		std::string contents;
-		
+
 		// For each character
 		for (;; ++charIndex)
 		{
@@ -1420,25 +1419,25 @@ namespace XML
 
 			// Update the current character
 			char thisChar = xmlString[charIndex];
-			
+
 			// If this is the closing of the CDATA region
 			if (tokenMatch(xmlString, charIndex, "]]>"))
 			{
 				// Move past the CDATA closing
 				charIndex += 2;
-				
+
 				// Break out of this loop
 				break;
 			}
-			
+
 			// Add the character to the region contents
 			contents.push_back(thisChar);
 		}
-		
+
 		// Create and return a new raw data node
 		return new RawData(contents);
 	}
-	
+
 	/***************************************************************
 	* Function: Parser::parseText()
 	* Purpose : Parse an XML text region
@@ -1447,10 +1446,10 @@ namespace XML
 	Revisions and bug fixes:
 	*/
 	Text* Parser::parseText(const std::string& xmlString, size_t& charIndex, const PosVector& positions)
-	{		
+	{
 		// Declare a string to store the text
 		std::string text;
-		
+
 		// For each character
 		for (;; ++charIndex)
 		{
@@ -1479,19 +1478,19 @@ namespace XML
 			{
 				// Move back one character
 				charIndex--;
-				
+
 				// Break out of this loop
 				break;
 			}
 
 			// Add this character to the text
 			text += thisChar;
-		}	
-		
+		}
+
 		// Create and returna new text node
 		return new Text(text);
 	}
-	
+
 	/***************************************************************
 	* Function: escapeString()
 	* Purpose : Escape an XML text string for output

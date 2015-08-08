@@ -56,26 +56,25 @@ Revisions and bug fixes:
 */
 CompUnits CodeParser::parseSrcFile(const std::string& filePath)
 {
-	// If the verbose output flag is set
-	if (ConfigManager::s_verboseVar.getBoolValue() == true)
-	{
+	// If the very verbose output flag is set
+	if (ConfigManager::s_veryVerboseVar) {
 		// Log that we are parsing this file
 		std::cout << "Parsing source file: \"" << filePath << "\"" << std::endl;
 	}
-	
+
     // Get the absolute path for the file
     std::string absPath = getAbsPath(filePath);
-    
+
     // If the file name is invalid
     if (absPath.empty())
     {
 		// Log the error
 		std::cout << "ERROR: invalid file name \"" + filePath << "\"" << std::endl;
-    	
+
     	// Abort parsing
     	return CompUnits();
     }
-    	
+
 	// Have the front-end parse the source code
 	std::string xmlText = Client::parseFile(absPath);
 
@@ -95,7 +94,7 @@ CompUnits CodeParser::parseSrcText(const std::string& commandString)
 	// returns an a default CompUnits, do not parse an empty command
 	if (commandString.empty())
 		return CompUnits();
-	
+
 	// Declare a string to store the XML output
 	std::string output = Client::parseText(commandString);
 
@@ -123,9 +122,8 @@ CompUnits CodeParser::parseXMLFile(const std::string& filePath)
 		// Parse the IR code string
 		XML::Document xmlIR = parser.parseFile(filePath);
 
-		// If the verbose output flag is set
-		if (ConfigManager::s_verboseVar.getBoolValue() == true)
-		{
+		// If the very verbose output flag is set
+		if (ConfigManager::s_veryVerboseVar) {
 			// Output the parsed XML
 			std::cout << std::endl;
 			std::cout << "Parsed XML: " << std::endl;
@@ -169,9 +167,8 @@ CompUnits CodeParser::parseXMLText(const std::string& input)
 		// Parse the IR code string
 		XML::Document xmlIR = parser.parseString(input);
 
-		// If the verbose output flag is set
-		if (ConfigManager::s_verboseVar.getBoolValue() == true)
-		{
+		// If the very verbose output flag is set
+		if (ConfigManager::s_veryVerboseVar) {
 			//  Output the parsed XML
 			std::cout << std::endl;
 			std::cout << "Parsed XML: " << std::endl;
@@ -214,13 +211,12 @@ CompUnits CodeParser::parseXMLRoot(const XML::Element* pTreeRoot)
 	{
 		// TODO: implement error list parsing
 		std::cout << "XML tree: " << pTreeRoot->toString(true, 0) << std::endl;
-		
+
 		throw XML::ParseError("Expected compilation units: \"" + pTreeRoot->getName() + "\"", pTreeRoot->getTextPos());
 	}
 
-	// If the verbose output flag is set
-	if (ConfigManager::s_verboseVar.getBoolValue() == true)
-	{
+	// If the very verbose output flag is set
+	if (ConfigManager::s_veryVerboseVar) {
 		// Log the number of compilation units
 		std::cout << "Number of compilation units: " << pTreeRoot->getNumChildren() << std::endl;
 	}
@@ -291,17 +287,19 @@ CompUnits CodeParser::parseXMLRoot(const XML::Element* pTreeRoot)
 	}
 
 	// If the verbose output flag is set
-	if (ConfigManager::s_verboseVar.getBoolValue() == true)
+	if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar)
 	{
 		// Output parsed IIR
 		std::cout << std::endl;
 		std::cout << "Constructed IIR:" << std::endl;
 		for (CompUnits::iterator itr = functionList.begin(); itr != functionList.end(); ++itr)
 			std::cout << ((*itr) == NULL? "NULL":(*itr)->toString()) << std::endl << std::endl;
-		std::cout << std::endl;
 
-		// Log that the parsing was successful
-		std::cout << "Parsing successful" << std::endl;
+                // Log that the parsing was successful
+                if (ConfigManager::s_veryVerboseVar) {
+                    std::cout << std::endl;
+                    std::cout << "Parsing successful" << std::endl;
+                }
 	}
 
 	// Return the parsed function list

@@ -30,7 +30,8 @@
 * Purpose : Perform type inference on a function body
 * Initial : Maxime Chevalier-Boisvert on April 17, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: better formatted output by Daniele Cono
+D'Elia, August 2015.
 */
 AnalysisInfo* computeTypeInfo(
 	const ProgFunction* pFunction,
@@ -38,55 +39,55 @@ AnalysisInfo* computeTypeInfo(
 	const TypeSetString& inArgTypes,
 	bool returnBottom
 )
-{	
+{
 	// Create a type inference info object
 	TypeInferInfo* pTypeInferInfo = new TypeInferInfo();
-	
+
 	// Get the input and output parameters for the function
 	const ProgFunction::ParamVector& inParams = pFunction->getInParams();
 	const ProgFunction::ParamVector& outParams = pFunction->getOutParams();
-	
+
 	// Ensure that the length of the argument type string is valid
 	assert (inArgTypes.size() <= inParams.size());
-	
+
 	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
+	if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar)
 	{
 		// Log that we are performing the analysis
 		std::cout << "Performing type inference analysis" << std::endl;
-	
+
 		// Log info about the input argument types
 		for (size_t i = 0; i < inArgTypes.size(); ++i)
 		{
-			std::cout << "Arg \"" << inParams[i]->toString() << "\"" << std::endl;
-			
+			std::cout << "Arg \"" << inParams[i]->toString() << "\": ";
+
 			const TypeSet& typeSet = inArgTypes[i];
-			
+
 			for (TypeSet::const_iterator itr = typeSet.begin(); itr != typeSet.end(); ++itr)
-				std::cout << itr->toString() << std::endl;		
+				std::cout << itr->toString() << std::endl;
 		}
 	}
-	
+
 	// If we should return bottom
 	if (returnBottom)
 	{
 		// Set the possible output types to empty sets
 		pTypeInferInfo->outArgTypes.resize(outParams.size());
-		
+
 		// Return the type inference info object
-		return pTypeInferInfo;	
+		return pTypeInferInfo;
 	}
-	
+
 	// std::cout << "Performing type inference on: " << pFunction->getFuncName() << std::endl;
 	// double startTime = Profiler::getTimeSeconds();
-	
+
 	// Create a variable type map object for the initial map
 	VarTypeMap initialMap;
-	
+
 	// Set the initial types of the input parameters in the initial map
 	for (size_t i = 0; i < inArgTypes.size(); ++i)
 		initialMap[inParams[i]] = inArgTypes[i];
-	
+
 	// Perform a reaching definition analysis on the function body
 	const ReachDefInfo* pReachDefInfo = (ReachDefInfo*)AnalysisManager::requestInfo(
 		&computeReachDefs,
@@ -94,7 +95,7 @@ AnalysisInfo* computeTypeInfo(
 		pFuncBody,
 		inArgTypes
 	);
-	
+
 	// Perform a live variable analysis on the function body
 	const LiveVarInfo* pLiveVarInfo = (LiveVarInfo*)AnalysisManager::requestInfo(
 		&computeLiveVars,
@@ -102,13 +103,13 @@ AnalysisInfo* computeTypeInfo(
 		pFuncBody,
 		inArgTypes
 	);
-	
+
 	// Declare variables for the exit, return, break and continue points
 	VarTypeMap exitPoint;
 	TypeMapVector retPoints;
 	TypeMapVector breakPoints;
 	TypeMapVector contPoints;
-	
+
 	// Perform type inference on the function body
 	inferTypes(
 		pFuncBody,
@@ -118,36 +119,36 @@ AnalysisInfo* computeTypeInfo(
 		initialMap,
 		exitPoint,
 		retPoints,
-		breakPoints, 
+		breakPoints,
 		contPoints,
 		pTypeInferInfo->preTypeMap,
 		pTypeInferInfo->postTypeMap,
 		pTypeInferInfo->exprTypeMap
 	);
-		
+
 	// Ensure that there are no unmatched break or continue points
 	assert (breakPoints.empty() && contPoints.empty());
-	
+
 	// Add the exit point to the list of return points
 	retPoints.push_back(exitPoint);
-	
+
 	// Compute the union of all return point type maps
-	pTypeInferInfo->exitTypeMap = typeMapVectorUnion(retPoints);	
-	
+	pTypeInferInfo->exitTypeMap = typeMapVectorUnion(retPoints);
+
 	// Resize the output type string to match the number of output arguments
 	pTypeInferInfo->outArgTypes.resize(outParams.size());
-	
+
 	// For each output argument
 	for (size_t i = 0; i < outParams.size(); ++i)
 	{
 		// Attempt to find this variable in the exit type map
 		VarTypeMap::const_iterator varItr = pTypeInferInfo->exitTypeMap.find(outParams[i]);
-		
+
 		// If no type information was found
 		if (varItr == pTypeInferInfo->exitTypeMap.end())
 		{
 			// If we are in verbose mode
-			if (ConfigManager::s_verboseVar)
+			if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar)
 			{
 				// Output a warning
 				std::cout << "WARNING: type-inference analysis suggests output param \"";
@@ -160,14 +161,14 @@ AnalysisInfo* computeTypeInfo(
 			pTypeInferInfo->outArgTypes[i] = varItr->second;
 		}
 	}
-	
+
 	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
-	{	
+	if (ConfigManager::s_veryVerboseVar)
+	{
 		// Log that the analysis is complete
 		std::cout << "Type inference analysis complete" << std::endl;
 	}
-	
+
 	// std::cout << "Type inference time: " << (Profiler::getTimeSeconds() - startTime) << " s (" << pFunction->getFuncName() << ")" << std::endl;
 
 	// Return the type inference info
@@ -189,7 +190,7 @@ void inferTypes(
 	const VarTypeMap& startMap,
 	VarTypeMap& exitMap,
 	TypeMapVector& retPoints,
-	TypeMapVector& breakPoints, 
+	TypeMapVector& breakPoints,
 	TypeMapVector& contPoints,
 	TypeInfoMap& preTypeMap,
 	TypeInfoMap& postTypeMap,
@@ -198,22 +199,22 @@ void inferTypes(
 {
 	// Get a reference to the statement vector
 	const StmtSequence::StmtVector& stmts = pStmtSeq->getStatements();
-	
+
 	// Initialize the current variable type map with the start map
 	VarTypeMap curMap = startMap;
-	
+
 	// Store the set before this statement sequence
 	preTypeMap[pStmtSeq] = curMap;
-	
+
 	// For each statement, in reverse order
 	for (StmtSequence::StmtVector::const_iterator stmtItr = stmts.begin(); stmtItr != stmts.end(); ++stmtItr)
 	{
 		// Get a pointer to the statement
 		const Statement* pStmt = *stmtItr;
-		
+
 		// Reduce and store the variable type map before this statement
 		preTypeMap[pStmt] = curMap;
-		
+
 		// Switch on the statement type
 		switch (pStmt->getStmtType())
 		{
@@ -246,11 +247,11 @@ void inferTypes(
 			{
 				// Declare a map for the type info after the statement
 				VarTypeMap exitMap;
-				
+
 				// Find the reaching definition information for this statement
 				ReachDefMap::const_iterator defItr = reachDefs.find(pStmt);
 				assert (defItr != reachDefs.end());
-				
+
 				// Infer the output types for this assignment statement
 				inferTypes(
 					(const AssignStmt*)pStmt,
@@ -261,17 +262,17 @@ void inferTypes(
 				);
 			}
 			break;
-			
+
 			// Expression statement
 			case Statement::EXPR:
 			{
 				// Get a typed pointer to the statement
 				ExprStmt* pExprStmt = (ExprStmt*)pStmt;
-				
+
 				// Find the reaching definition information for this statement
 				ReachDefMap::const_iterator defItr = reachDefs.find(pStmt);
 				assert (defItr != reachDefs.end());
-				
+
 				// Perform type inference for the expression
 				inferTypes(
 					pExprStmt->getExpression(),
@@ -282,13 +283,13 @@ void inferTypes(
 				);
 			}
 			break;
-			
+
 			// If-else statement
 			case Statement::IF_ELSE:
 			{
 				// Declare a map for the type info after the statement
 				VarTypeMap exitMap;
-				
+
 				// Get the type info map for the if-else statement
 				inferTypes(
 					(const IfElseStmt*)pStmt,
@@ -303,15 +304,15 @@ void inferTypes(
 					preTypeMap,
 					postTypeMap,
 					exprTypeMap
-				);		
-				
+				);
+
 				// Update the current variable type map
 				curMap = exitMap;
-				
+
 				/*
 				// Find the live variable information for this statement
 				LiveVarMap::const_iterator liveItr = liveVars.find(pStmt);
-				assert (liveItr != liveVars.end());				
+				assert (liveItr != liveVars.end());
 				varTypeMapReduce(curMap);
 				*/
 			}
@@ -319,10 +320,10 @@ void inferTypes(
 
 			// Loop statement
 			case Statement::LOOP:
-			{				
+			{
 				// Declare a map for the type info after the statement
 				VarTypeMap exitMap;
-								
+
 				// Get the type info map for the loop statement
 				inferTypes(
 					(const LoopStmt*)pStmt,
@@ -336,33 +337,33 @@ void inferTypes(
 					postTypeMap,
 					exprTypeMap
 				);
-											
+
 				// Update the current variable type map
 				curMap = exitMap;
-				
+
 				/*
 				// Find the live variable information for this statement
 				LiveVarMap::const_iterator liveItr = liveVars.find(pStmt);
-				assert (liveItr != liveVars.end());				
+				assert (liveItr != liveVars.end());
 				varTypeMapReduce(curMap);
 				*/
 			}
 			break;
-			
+
 			// Other statement types
 			default:
 			{
 				// Do nothing, no definitions created
 			}
 		}
-		
+
 		// Reduce and store the variable type map after this statement
 		postTypeMap[pStmt] = curMap;
 	}
-	
+
 	// Store the type map at the exit point
 	exitMap = curMap;
-	
+
 	// Store the set after this statement sequence
 	postTypeMap[pStmtSeq] = exitMap;
 }
@@ -382,7 +383,7 @@ void inferTypes(
 	const VarTypeMap& startMap,
 	VarTypeMap& exitMap,
 	TypeMapVector& retPoints,
-	TypeMapVector& breakPoints, 
+	TypeMapVector& breakPoints,
 	TypeMapVector& contPoints,
 	TypeInfoMap& preTypeMap,
 	TypeInfoMap& postTypeMap,
@@ -391,15 +392,15 @@ void inferTypes(
 {
 	// Get the condition expression
 	Expression* pTestExpr = pIfStmt->getCondition();
-	
-	// Store the variable type map at the condition expression 
+
+	// Store the variable type map at the condition expression
 	preTypeMap[pTestExpr] = startMap;
 	postTypeMap[pTestExpr] = startMap;
 
 	// Create variable type maps for the exit points of the if and else blocks
 	VarTypeMap ifVarTypes;
 	VarTypeMap elseVarTypes;
-	
+
 	// Get the type information for the if block statements
 	inferTypes(
 		pIfStmt->getIfBlock(),
@@ -425,13 +426,13 @@ void inferTypes(
 		startMap,
 		elseVarTypes,
 		retPoints,
-		breakPoints, 
+		breakPoints,
 		contPoints,
 		preTypeMap,
 		postTypeMap,
 		exprTypeMap
 	);
-	
+
 	// Compute the exit variable type map as the union of the maps of the if and else blocks
 	exitMap = varTypeMapUnion(ifVarTypes, elseVarTypes);
 }
@@ -457,10 +458,10 @@ void inferTypes(
 )
 {
 	//std::cout << "Inferring loop: " << pLoopStmt->toString() << std::endl;
-	
+
 	// Declare type maps for the initialization exit variable type info
 	VarTypeMap initExitMap;
-	
+
 	// Get the type info map for the initialization block
 	TypeMapVector initRetPoints;
 	TypeMapVector initBreakPoints;
@@ -473,26 +474,26 @@ void inferTypes(
 		startMap,
 		initExitMap,
 		initRetPoints,
-		initBreakPoints, 
+		initBreakPoints,
 		initContPoints,
 		preTypeMap,
 		postTypeMap,
 		exprTypeMap
 	);
 	assert (initRetPoints.empty() && initBreakPoints.empty() && initContPoints.empty());
-	
+
 	// Initialize the current incrementation exit map to the value of the init exit map
 	VarTypeMap curIncrExitMap = initExitMap;
-	
+
 	// Until we have reached a fixed point
 	for (;;)
 	{
 		// Compute the test start map as the union of the init exit and incr exit maps
-		VarTypeMap testStartMap = varTypeMapUnion(initExitMap, curIncrExitMap);		
+		VarTypeMap testStartMap = varTypeMapUnion(initExitMap, curIncrExitMap);
 
 		// Declare a map for the test exit reaching definitions
 		VarTypeMap testExitMap;
-				
+
 		// Get the type info map for the test block
 		TypeMapVector testRetPoints;
 		TypeMapVector testBreakPoints;
@@ -505,7 +506,7 @@ void inferTypes(
 			testStartMap,
 			testExitMap,
 			testRetPoints,
-			testBreakPoints, 
+			testBreakPoints,
 			testContPoints,
 			preTypeMap,
 			postTypeMap,
@@ -517,7 +518,7 @@ void inferTypes(
 		VarTypeMap bodyExitMap;
 		TypeMapVector breakPoints;
 		TypeMapVector contPoints;
-			
+
 		// Get the live variable map for the body block
 		inferTypes(
 			pLoopStmt->getBodySeq(),
@@ -533,19 +534,19 @@ void inferTypes(
 			postTypeMap,
 			exprTypeMap
 		);
-	
+
 		// Add the test exit map to the break point list
 		breakPoints.push_back(testExitMap);
-		
+
 		// Add the body exit map to the continue point list
-		contPoints.push_back(bodyExitMap);		
-		
+		contPoints.push_back(bodyExitMap);
+
 		// Compute the incr start map as the union of all the continue maps
 		VarTypeMap incrStartMap = typeMapVectorUnion(contPoints);
 
 		// Declare a map for the incrementation block exit types
 		VarTypeMap incrExitMap;
-		
+
 		// Get the live variable map for the incrementation block
 		TypeMapVector incrRetPoints;
 		TypeMapVector incrBreakPoints;
@@ -565,14 +566,14 @@ void inferTypes(
 			exprTypeMap
 		);
 		assert (incrRetPoints.empty() && incrBreakPoints.empty() && incrContPoints.empty());
-				
+
 		// Update the current exit map
 		exitMap = typeMapVectorUnion(breakPoints);
-		
+
 		// If a fixed point has been reached, stop
 		if (incrExitMap == curIncrExitMap)
 			break;
-		
+
 		// Update the incrementation block exit types
 		curIncrExitMap = incrExitMap;
 	}
@@ -594,10 +595,10 @@ void inferTypes(
 )
 {
 	//std::cout << "Inferring types for assignment statement" << std::endl;
-	
+
 	// Get a pointer to the right expression
 	const Expression* pRightExpr = pAssignStmt->getRightExpr();
-	
+
 	// Perform type inference for the right expression
 	TypeSetString typeSetStr = inferTypes(
 		pRightExpr,
@@ -609,7 +610,7 @@ void inferTypes(
 
 	// Get the vector of left-side expressions
 	const AssignStmt::ExprVector& leftExprs = pAssignStmt->getLeftExprs();
-	
+
 	// If there are too many left-side expression
 	if (leftExprs.size() > typeSetStr.size())
 	{
@@ -617,16 +618,16 @@ void inferTypes(
 		typeSetStr.clear();
 		typeSetStr.resize(leftExprs.size(), TypeSet());
 	}
-		
+
 	// For each left-side expression
 	for (size_t i = 0; i < leftExprs.size(); ++i)
 	{
 		// Get a pointer to the expression
 		Expression* pLeftExpr = leftExprs[i];
-		
+
 		// Get the possible types for the corresponding rhs value
 		TypeSet rhsValTypes = typeSetReduce(typeSetStr[i]);
-		
+
 		// Switch on the expression type
 		switch (pLeftExpr->getExprType())
 		{
@@ -634,7 +635,7 @@ void inferTypes(
 			case Expression::SYMBOL:
 			{
 				// Update the type information for this symbol
-				varTypes[(SymbolExpr*)pLeftExpr] = rhsValTypes;				
+				varTypes[(SymbolExpr*)pLeftExpr] = rhsValTypes;
 			}
 			break;
 
@@ -643,9 +644,9 @@ void inferTypes(
 			{
 				// Get a typed pointer to the expression
 				ParamExpr* pParamExpr = (ParamExpr*)pLeftExpr;
-				
+
 				//std::cout << "Analyzing lhs param expr args" << std::endl;
-				
+
 				// Analyze the matrix indexing argument types
 				size_t numIndexDims;
 				bool isScalarIndexing;
@@ -660,27 +661,27 @@ void inferTypes(
 					isScalarIndexing,
 					isMatrixIndexing
 				);
-				
+
 				//std::cout << "Done analyzing lhs param expr args" << std::endl;
-				
+
 				// Get the current type set for the symbol
 				TypeSet& typeSet = varTypes[pParamExpr->getSymExpr()];
-				
+
 				// Declare a type set for the output
 				TypeSet outSet;
-				
+
 				// For each type in the set
 				for (TypeSet::iterator itr = typeSet.begin(); itr != typeSet.end(); ++itr)
 				{
 					// Get the type info object
 					TypeInfo type = *itr;
-					
+
 					// If this is a matrix object
 					if (type.getObjType() >= DataObject::MATRIX_I32 && type.getObjType() <= DataObject::CELLARRAY)
 					{
 						// Test whether or not the matrix can be guaranteed to be 2D
 						type.set2D(type.is2D() && numIndexDims <= 2);
-						
+
 						// We can no longer assume the matrix is scalar
 						type.setScalar(false);
 
@@ -688,13 +689,13 @@ void inferTypes(
 						bool rhsInteger = (rhsValTypes.size() > 0);
 						for (TypeSet::const_iterator typeItr = rhsValTypes.begin(); typeItr != rhsValTypes.end(); ++typeItr)
 							if (typeItr->isInteger() == false) rhsInteger = false;
-						
+
 						// Test whether or not the matrix can be guaranteed to be integer
 						type.setInteger(type.isInteger() && rhsInteger);
-						
+
 						// The size of the matrix is no longer known
 						type.setSizeKnown(false);
-						
+
 						// If this is a cell array
 						if (type.getObjType() == DataObject::CELLARRAY)
 						{
@@ -708,10 +709,10 @@ void inferTypes(
 							{
 								// Declare a variable to tell if this is the first cell array encountered
 								bool firstCell = true;
-								
+
 								// Declare a set for the possible cell types
 								TypeSet cellTypes;
-								
+
 								// For each possible rhs type
 								for (TypeSet::const_iterator typeItr = rhsValTypes.begin(); typeItr != rhsValTypes.end(); ++typeItr)
 								{
@@ -723,33 +724,33 @@ void inferTypes(
 											cellTypes = typeItr->getCellTypes();
 										else
 											typeSetUnion(cellTypes, typeItr->getCellTypes());
-												
+
 										// Update the first cell flag
 										firstCell = false;
 									}
 								}
-								
+
 								// If the lhs cell array is not empty, include its possible types in the union
 								if (type.getSizeKnown() == false || type.getMatSize() != TypeInfo::DimVector(2, 0))
 									cellTypes = typeSetUnion(cellTypes, type.getCellTypes());
-								
+
 								// Reduce the set of possible cell stored types
 								cellTypes = typeSetReduce(cellTypes);
-								
+
 								// Update the possible cell array types
 								type.setCellTypes(cellTypes);
 							}
 						}
-						
+
 						// Otherwise, if this is not a cell array
 						else
-						{							
+						{
 							// Test whether or not the rhs value can be guaranteed to not be complex
 							bool rhsNotComplex = (rhsValTypes.size() > 0);
 							for (TypeSet::const_iterator typeItr = rhsValTypes.begin(); typeItr != rhsValTypes.end(); ++typeItr)
 								if (typeItr->getObjType() == DataObject::MATRIX_C128) rhsNotComplex = false;
-							
-							// If the rhs value cannot be guaranteed not to be complex  
+
+							// If the rhs value cannot be guaranteed not to be complex
 							if (rhsNotComplex == false)
 							{
 								// Add the equivalent complex type to the output set
@@ -759,26 +760,26 @@ void inferTypes(
 							}
 						}
 					}
-					
+
 					// Add the updated type to the output type set
 					outSet.insert(type);
 				}
-				
+
 				//std::cout << "Done analyzing lhs param expr" << std::endl;
-				
+
 				// Update the type set for this symbol
 				varTypes[pParamExpr->getSymExpr()] = outSet;
 			}
 			break;
-			
+
 			// Cell-indexing expression
 			case Expression::CELL_INDEX:
 			{
 				//std::cout << "Inferring cell-indexing assignment lhs" << std::endl;
-				
+
 				// Get a typed pointer to the expression
 				CellIndexExpr* pCellExpr = (CellIndexExpr*)pLeftExpr;
-				
+
 				// Analyze the matrix indexing argument types
 				size_t numIndexDims;
 				bool isScalarIndexing;
@@ -793,69 +794,69 @@ void inferTypes(
 					isScalarIndexing,
 					isMatrixIndexing
 				);
-				
+
 				// Get the current type set for the symbol
 				TypeSet& typeSet = varTypes[pCellExpr->getSymExpr()];
-				
+
 				// Declare a type set for the output
 				TypeSet outSet;
-				
+
 				// For each type in the set
 				for (TypeSet::iterator itr = typeSet.begin(); itr != typeSet.end(); ++itr)
 				{
 					// Get the type info object
 					TypeInfo type = *itr;
-				
+
 					// If this is a cell array
 					if (type.getObjType() == DataObject::CELLARRAY)
 					{
 						// Test whether or not the matrix can be guaranteed to be 2D
 						type.set2D(type.is2D() && numIndexDims <= 2);
-						
+
 						// We can no longer assume the matrix is scalar
 						type.setScalar(false);
-				
+
 						// The size of the matrix is no longer known
 						type.setSizeKnown(false);
-						
+
 						// Declare a type set for the possible cell stored types
 						TypeSet cellTypes;
-							
+
 						// If the type set string is empty
 						if (rhsValTypes.empty())
 						{
 							// Let the cell type set be empty
-						}						
-												
+						}
+
 						// Otherwise, if the lhs cell array is not empty
 						else if (type.getSizeKnown() == false || type.getMatSize() != TypeInfo::DimVector(2, 0))
 						{
 							// Perform the union of the current cell types and the rhs types
 							cellTypes = typeSetUnion(typeSetStr[0], type.getCellTypes());
 						}
-						
+
 						// Otherwise, the lhs cell array is empty
-						else			
+						else
 						{
 							// Store the rhs types as the potential cell types directly
 							cellTypes = rhsValTypes;
 						}
-							
+
 						// Reduce the set of possible cell stored types
 						cellTypes = typeSetReduce(cellTypes);
-						
+
 						// Update the possible cell stored types
 						type.setCellTypes(cellTypes);
-					}	
+					}
 				}
-				
+
 				// Update the type set for this symbol
 				varTypes[pCellExpr->getSymExpr()] = outSet;
-				
+
 				//std::cout << "Done inferring cell-indexing assignment lhs" << std::endl;
 			}
 			break;
-		
+
 			// Other expression types
 			default:
 			{
@@ -863,7 +864,7 @@ void inferTypes(
 			}
 		}
 	}
-	
+
 	//std::cout << "Done inferring types for assignment statement" << std::endl;
 }
 
@@ -884,7 +885,7 @@ TypeSetString inferTypes(
 {
 	// Create a type set string to store the output types
 	TypeSetString outTypes;
-	
+
 	// Switch on the expression type
 	switch (pExpression->getExprType())
 	{
@@ -901,7 +902,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-			
+
 		// Cell indexing expression
 		case Expression::CELL_INDEX:
 		{
@@ -915,7 +916,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-		
+
 		// Binary expression
 		case Expression::BINARY_OP:
 		{
@@ -929,7 +930,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-			
+
 		// Unary expression
 		case Expression::UNARY_OP:
 		{
@@ -943,7 +944,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-			
+
 		// Symbol expression
 		case Expression::SYMBOL:
 		{
@@ -957,7 +958,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-			
+
 		// Integer constant
 		case Expression::INT_CONST:
 		{
@@ -974,7 +975,7 @@ TypeSetString inferTypes(
 			));
 		}
 		break;
-			
+
 		// Floating-point constant
 		case Expression::FP_CONST:
 		{
@@ -991,18 +992,18 @@ TypeSetString inferTypes(
 			));
 		}
 		break;
-			
+
 		// String constant
 		case Expression::STR_CONST:
 		{
 			// Get a typed pointer to the expression
 			StrConstExpr* pStrConst = (StrConstExpr*)pExpression;
-			
+
 			// Store the resultign matrix size
 			TypeInfo::DimVector matSize;
 			matSize.push_back(1);
 			matSize.push_back(pStrConst->getValue().length());
-			
+
 			// Return the type info for the floating-point constant
 			outTypes = typeSetStrMake(TypeInfo(
 				DataObject::CHARARRAY,
@@ -1013,10 +1014,10 @@ TypeSetString inferTypes(
 				matSize,
 				NULL,
 				TypeSet()
-			));			
+			));
 		}
 		break;
-			
+
 		// Range expression
 		case Expression::RANGE:
 		{
@@ -1030,7 +1031,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-			
+
 		// End expression
 		case Expression::END:
 		{
@@ -1061,7 +1062,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-			
+
 		// Cell array expression
 		case Expression::CELLARRAY:
 		{
@@ -1075,7 +1076,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-			
+
 		// Function handle expression
 		case Expression::FN_HANDLE:
 		{
@@ -1089,7 +1090,7 @@ TypeSetString inferTypes(
 			);
 		}
 		break;
-		
+
 		// Lambda form expression
 		case Expression::LAMBDA:
 		{
@@ -1097,7 +1098,7 @@ TypeSetString inferTypes(
 			outTypes = TypeSetString();
 		}
 		break;
-		
+
 		// Other expression types
 		default:
 		{
@@ -1105,9 +1106,9 @@ TypeSetString inferTypes(
 			outTypes = TypeSetString();
 		}
 	}
-	
+
 	//std::cout << "Done inferring expr: " << pExpression->toString() << std::endl;
-	
+
 	// If there is no entry for this expression in the expression type map
 	if (exprTypeMap.find(pExpression) == exprTypeMap.end())
 	{
@@ -1118,15 +1119,15 @@ TypeSetString inferTypes(
 	{
 		// Get the types currently associated with this expression
 		TypeSetString& exprTypes = exprTypeMap[pExpression];
-		
+
 		// Resize the expression types to contain all output types, if necessary
 		exprTypes.resize(std::max(exprTypes.size(), outTypes.size()));
-		
+
 		// Perform the union of the current types and the new output types
 		for (size_t i = 0; i < outTypes.size(); ++i)
 			exprTypes[i] = typeSetUnion(exprTypes[i], outTypes[i]);
 	}
-	
+
 	// Return the output types
 	return outTypes;
 }
@@ -1147,16 +1148,16 @@ TypeSetString inferTypes(
 )
 {
 	//std::cout << "Inferring parameterized expression" << std::endl;
-	
+
 	// Get the symbol expression
 	SymbolExpr* pSymbol = pParamExpr->getSymExpr();
-	
+
 	// Lookup the symbol in the variable type map
 	VarTypeMap::const_iterator varTypeItr = varTypes.find(pSymbol);
-	
-	// Get a reference to the argument vector 
+
+	// Get a reference to the argument vector
 	const ParamExpr::ExprVector& argVector = pParamExpr->getArguments();
-		
+
 	// Analyze the matrix indexing argument types
 	size_t numIndexDims;
 	bool isScalarIndexing;
@@ -1171,30 +1172,30 @@ TypeSetString inferTypes(
 		isScalarIndexing,
 		isMatrixIndexing
 	);
-	
+
 	//std::cout << "Scalar indexing: " << isScalarIndexing << std::endl;
-	
+
 	// Declare a set for the potential callee functions
 	std::set<Function*> calleeSet;
-	
+
 	// Declare a set for the possible output values
 	std::set<TypeSetString> outputSet;
-	
+
 	// If there is type information for this variable
 	if (varTypeItr != varTypes.end() && varTypeItr->second.empty() == false)
 	{
 		// Get a reference to the type set
-		const TypeSet& typeSet = varTypeItr->second;		
-		
+		const TypeSet& typeSet = varTypeItr->second;
+
 		// Declare a type set for the output
 		TypeSet outSet;
-		
+
 		// For each type in the set
 		for (TypeSet::const_iterator itr = typeSet.begin(); itr != typeSet.end(); ++itr)
 		{
 			// Get the type info object
 			TypeInfo type = *itr;
-			
+
 			// If this is a matrix object
 			if (type.getObjType() >= DataObject::MATRIX_I32 && type.getObjType() <= DataObject::CHARARRAY)
 			{
@@ -1208,9 +1209,9 @@ TypeSetString inferTypes(
 					isScalarIndexing? TypeInfo::DimVector(2, 1):TypeInfo::DimVector(),
 					NULL,
 					TypeSet()
-				));	
+				));
 			}
-			
+
 			// Otherwise, if this is a cell array
 			else if (type.getObjType() == DataObject::CELLARRAY)
 			{
@@ -1226,42 +1227,42 @@ TypeSetString inferTypes(
 					type.getCellTypes()
 				));
 			}
-			
+
 			// If this is a function handle
 			else if (type.getObjType() == DataObject::FN_HANDLE)
 			{
 				// Get the function the handle points to
-				Function* pFunc = type.getFunction(); 
-				
+				Function* pFunc = type.getFunction();
+
 				// If the handle is to an unknown function, return no information
 				if (pFunc == NULL)
 					return TypeSetString();
-				
+
 				// Add the function to the potential callee set
 				calleeSet.insert(pFunc);
 			}
 		}
-		
+
 		// Add the possible output values to the set
-		outputSet.insert(TypeSetString(1, outSet));	
+		outputSet.insert(TypeSetString(1, outSet));
 	}
-	
+
 	// Lookup the symbol in the reaching definitions map
 	VarDefMap::const_iterator varDefItr = reachDefs.find(pSymbol);
-	
+
 	//std::cout << "Looked up symbol in reaching defs" << std::endl;
-	
+
 	// If we are in the case where the only reaching definition comes from the local env.
 	if (varDefItr != reachDefs.end() && varDefItr->second.size() == 1 && varDefItr->second.find(NULL) != varDefItr->second.end())
 	{
 		//std::cout << "SYMBOL COMES FROM LOCAL ENV: " << pSymbol->toString() << std::endl;
-		
+
 		// Declare a pointer for the object
 		const DataObject* pObject;
-		
+
 		// Setup a try block to catch lookup errors
 		try
-		{			
+		{
 			// Lookup the symbol in the environment
 			pObject = Interpreter::evalSymbol(pSymbol, pLocalEnv);
 		}
@@ -1270,41 +1271,41 @@ TypeSetString inferTypes(
 			// Lookup failed, set the object pointer to NULL
 			pObject = NULL;
 		}
-	
+
 		//std::cout << "Looked up symbol in environment" << std::endl;
-		
+
 		// If the object is not a function, return no information
 		if (pObject == NULL || pObject->getType() != DataObject::FUNCTION)
 			return TypeSetString();
-	
+
 		// Get a typed pointer to the function
 		Function* pFunction = (Function*)pObject;
-		
+
 		//std::cout << "Adding potential callee" << std::endl;
-		
+
 		// Add the function to the potential callee set
 		calleeSet.insert(pFunction);
 	}
-	
+
 	// If there are potential callees
 	if (calleeSet.size() > 0)
 	{
 		// Declare type set strings for the function call arguments
 		TypeSetString callArgs;
-		
+
 		// For each argument expression
 		for (ParamExpr::ExprVector::const_iterator argItr = argVector.begin(); argItr != argVector.end(); ++argItr)
 		{
 			// Get a pointer to the argument expression
 			Expression* pArgExpr = *argItr;
-					
+
 			// If this is a cell array indexing espression
 			if (pArgExpr->getExprType() == Expression::CELL_INDEX)
 			{
 				// Return no information
 				return TypeSetString();
 			}
-			
+
 			// Any other expression type
 			else
 			{
@@ -1316,32 +1317,32 @@ TypeSetString inferTypes(
 					varTypes,
 					exprTypeMap
 				);
-				
+
 				// If one of the arguments has unknown type, return no information
 				if (outTypes.size() == 0)
 					return TypeSetString();
-				
+
 				// If one of the latter arguments is an empty set, return no information
 				for (size_t i = 1; i < outTypes.size(); ++i)
 					if (outTypes[i].empty()) return TypeSetString();
-				
+
 				// Add the arguments to the call arguments
 				callArgs.insert(callArgs.end(), outTypes.begin(), outTypes.end());
 			}
 		}
-				
+
 		// For each potential callee
 		for (std::set<Function*>::iterator funcItr = calleeSet.begin(); funcItr != calleeSet.end(); ++funcItr)
 		{
 			// Get a pointer to the function
 			Function* pFunction = *funcItr;
-			
+
 			// If this is a program function
 			if (pFunction->isProgFunction())
 			{
 				// Get a typed pointer to the program function
 				ProgFunction* pProgFunc = (ProgFunction*)pFunction;
-	
+
 				// Perform a type inference analysis on the function body
 				const TypeInferInfo* pTypeInferInfo = (TypeInferInfo*)AnalysisManager::requestInfo(
 					&computeTypeInfo,
@@ -1349,20 +1350,20 @@ TypeSetString inferTypes(
 					pProgFunc->getCurrentBody(),
 					callArgs
 				);
-				
+
 				// Add the output type string to the potential output set
 				outputSet.insert(pTypeInferInfo->outArgTypes);
 			}
 			else
 			{
 				// TODO: handle the "feval" case
-				
+
 				// Get a typed pointer to the library function
 				LibFunction* pLibFunc = (LibFunction*)pFunction;
-				
+
 				// Get the type mapping function for this library function
 				TypeMapFunc pTypeMapping = pLibFunc->getTypeMapping();
-				
+
 				// Get the potential output arguments for the call arguments
 				TypeSetString outTypes = pTypeMapping(callArgs);
 
@@ -1371,17 +1372,17 @@ TypeSetString inferTypes(
 			}
 		}
 	}
-		
+
 	// If there are no possible outputs, return no information
 	if (outputSet.empty())
 		return TypeSetString();
-	
+
 	// Declare a type set string for the output types
 	TypeSetString outputTypes;
-	
+
 	// Get an iterator to the potential output set
 	std::set<TypeSetString>::iterator outItr = outputSet.begin();
-	
+
 	// Initialize the output type string to the first possible output
 	outputTypes = *(outItr++);
 
@@ -1389,17 +1390,17 @@ TypeSetString inferTypes(
 	for (; outItr != outputSet.end(); ++outItr)
 	{
 		// Get a reference to the current type string
-		const TypeSetString& curTypes = *outItr; 
-		
+		const TypeSetString& curTypes = *outItr;
+
 		// If the type string lengths do not match, return no information
 		if (curTypes.size() != outputTypes.size())
 			return TypeSetString();
-		
+
 		// Perform the union of the two type strings
 		for (size_t i = 0; i < outputTypes.size(); ++i)
 			outputTypes[i] = typeSetUnion(outputTypes[i], curTypes[i]);
-	}	
-	
+	}
+
 	// Return the output type string
 	return outputTypes;
 }
@@ -1421,17 +1422,17 @@ TypeSetString inferTypes(
 {
 	// Get the symbol expression
 	SymbolExpr* pSymbol = pCellExpr->getSymExpr();
-	
+
 	// Lookup the symbol in the variable type map
 	VarTypeMap::const_iterator varTypeItr = varTypes.find(pSymbol);
 
 	// If we have no information about this variable, return no information
 	if (varTypeItr == varTypes.end())
 		return TypeSetString();
-	
-	// Get a reference to the argument vector 
+
+	// Get a reference to the argument vector
 	const CellIndexExpr::ExprVector& argVector = pCellExpr->getArguments();
-		
+
 	// Analyze the matrix indexing argument types
 	size_t numIndexDims;
 	bool isScalarIndexing;
@@ -1446,17 +1447,17 @@ TypeSetString inferTypes(
 		isScalarIndexing,
 		isMatrixIndexing
 	);
-	
+
 	// If this is not scalar indexing, return no information
 	if (isScalarIndexing == false)
 		return TypeSetString();
-	
+
 	// Reduce the type set for this variable so there is at most one cell array type
 	TypeSet typeSet = typeSetReduce(varTypeItr->second);
-	
+
 	// Declare a type set for the possible output types
 	TypeSet outTypes;
-	
+
 	// For each possible variable type
 	for (TypeSet::const_iterator typeItr = typeSet.begin(); typeItr != typeSet.end(); ++typeItr)
 	{
@@ -1467,7 +1468,7 @@ TypeSetString inferTypes(
 			outTypes = typeItr->getCellTypes();
 		}
 	}
-	
+
 	// Return the possible output types
 	return TypeSetString(1, outTypes);
 }
@@ -1504,16 +1505,16 @@ TypeSetString inferTypes(
 		varTypes,
 		exprTypeMap
 	);
-	
+
 	// Get the first left and right type sets
 	TypeSet leftSet = leftTypes.empty()? TypeSet():leftTypes.front();
 	TypeSet rightSet = rightTypes.empty()? TypeSet():rightTypes.front();
-	
+
 	// Add the argument types to a type set string
 	TypeSetString argTypes;
 	argTypes.push_back(leftSet);
 	argTypes.push_back(rightSet);
-	
+
 	// Switch on the binary operator
 	switch (pBinaryExpr->getOperator())
 	{
@@ -1527,7 +1528,7 @@ TypeSetString inferTypes(
 			return arrayArithOpTypeMapping<true>(argTypes);
 		};
 		break;
-		
+
 		// Array arithmetic operation (non int preserving)
 		case BinaryOpExpr::ARRAY_DIV:
 		case BinaryOpExpr::ARRAY_LEFT_DIV:
@@ -1536,7 +1537,7 @@ TypeSetString inferTypes(
 			return arrayArithOpTypeMapping<false>(argTypes);
 		}
 		break;
-		
+
 		// Multiplication operation
 		case BinaryOpExpr::MULT:
 		{
@@ -1544,24 +1545,24 @@ TypeSetString inferTypes(
 			return multOpTypeMapping(argTypes);
 		}
 		break;
-		
+
 		// Division operation
 		case BinaryOpExpr::DIV:
 		{
 			// Perform type inference for the division operation
 			return divOpTypeMapping(argTypes);
 		}
-		break;			
-			
+		break;
+
 		// Left division operation
 		case BinaryOpExpr::LEFT_DIV:
 		{
 			// Perform type inference for the division operation
 			return leftDivOpTypeMapping(argTypes);
 		}
-		break;	
-			
-		// Exponentiation operation	
+		break;
+
+		// Exponentiation operation
 		case BinaryOpExpr::POWER:
 		{
 			// Perform type inference for the power operation
@@ -1583,7 +1584,7 @@ TypeSetString inferTypes(
 			return arrayLogicOpTypeMapping(argTypes);
 		}
 		break;
-			
+
 		// Logical OR/AND operation
 		case BinaryOpExpr::OR:
 		case BinaryOpExpr::AND:
@@ -1601,7 +1602,7 @@ TypeSetString inferTypes(
 			));
 		}
 		break;
-		
+
 		// Other expression types
 		default:
 		{
@@ -1634,14 +1635,14 @@ TypeSetString inferTypes(
 		varTypes,
 		exprTypeMap
 	);
-	
+
 	// Get the argument type set
 	TypeSet typeSet = argTypes.empty()? TypeSet():argTypes.front();
-	
+
 	// Add the argument type set to a type set string
 	TypeSetString typeSetStr;
 	typeSetStr.push_back(typeSet);
-	
+
 	// Switch on the unary operator
 	switch (pUnaryExpr->getOperator())
 	{
@@ -1652,7 +1653,7 @@ TypeSetString inferTypes(
 			return identTypeMapping(typeSetStr);
 		}
 		break;
-			
+
 		// Arithmetic negation operation
 		case UnaryOpExpr::MINUS:
 		{
@@ -1660,7 +1661,7 @@ TypeSetString inferTypes(
 			return minusOpTypeMapping(typeSetStr);
 		}
 		break;
-		
+
 		// Logical negation operation
 		case UnaryOpExpr::NOT:
 		{
@@ -1668,7 +1669,7 @@ TypeSetString inferTypes(
 			return notOpTypeMapping(typeSetStr);
 		}
 		break;
-		
+
 		// Transpose operations
 		case UnaryOpExpr::TRANSP:
 		case UnaryOpExpr::ARRAY_TRANSP:
@@ -1677,7 +1678,7 @@ TypeSetString inferTypes(
 			return transpOpTypeMapping(typeSetStr);
 		}
 		break;
-	
+
 		// Other expression types
 		default:
 		{
@@ -1704,26 +1705,26 @@ TypeSetString inferTypes(
 {
 	// Attempt to find a type set for this symbol
 	VarTypeMap::const_iterator varItr = varTypes.find(pSymbolExpr);
-	
+
 	// If type information for this variable was found
 	if (varItr != varTypes.end())
 	{
 		// Return the type information associated with this variable
 		return TypeSetString(1, varItr->second);
 	}
-	
+
 	// Lookup the symbol in the reaching definitions map
 	VarDefMap::const_iterator varDefItr = reachDefs.find(pSymbolExpr);
-				
+
 	// If we are in the case where the only reaching definition comes from the local env.
 	if (varDefItr != reachDefs.end() && varDefItr->second.size() == 1 && varDefItr->second.find(NULL) != varDefItr->second.end())
 	{
 		// Declare a pointer for the object
 		const DataObject* pObject;
-		
+
 		// Setup a try block to catch lookup errors
 		try
-		{				
+		{
 			// Lookup the symbol in the environment
 			pObject = Interpreter::evalSymbol(pSymbolExpr, pLocalEnv);
 		}
@@ -1732,8 +1733,8 @@ TypeSetString inferTypes(
 			// Lookup failed, set the object pointer to NULL
 			pObject = NULL;
 		}
-			
-		// If the object is not a function 
+
+		// If the object is not a function
 		if (pObject == NULL || pObject->getType() != DataObject::FUNCTION)
 		{
 			// Return no information
@@ -1742,13 +1743,13 @@ TypeSetString inferTypes(
 
 		// Get a typed pointer to the function
 		Function* pFunction = (Function*)pObject;
-			
+
 		// If this is a program function
 		if (pFunction->isProgFunction())
 		{
 			// Get a typed pointer to the program function
 			ProgFunction* pProgFunc = (ProgFunction*)pFunction;
-			
+
 			// Perform a type inference analysis on the function body
 			const TypeInferInfo* pTypeInferInfo = (TypeInferInfo*)AnalysisManager::requestInfo(
 				&computeTypeInfo,
@@ -1756,7 +1757,7 @@ TypeSetString inferTypes(
 				pProgFunc->getCurrentBody(),
 				TypeSetString()
 			);
-			
+
 			// Return the potential output arguments for the call arguments
 			return pTypeInferInfo->outArgTypes;
 		}
@@ -1764,15 +1765,15 @@ TypeSetString inferTypes(
 		{
 			// Get a typed pointer to the library function
 			LibFunction* pLibFunc = (LibFunction*)pFunction;
-			
+
 			// Get the type mapping function for this library function
 			TypeMapFunc pTypeMapping = pLibFunc->getTypeMapping();
-			
+
 			// Return the potential output arguments for the call arguments
 			return pTypeMapping(TypeSetString());
-		}				
+		}
 	}
-		
+
 	// Return no information
 	return TypeSetString();
 }
@@ -1795,7 +1796,7 @@ TypeSetString inferTypes(
 	// Get the start and step expressions
 	Expression* pStartExpr = pRangeExpr->getStartExpr();
 	Expression* pStepExpr = pRangeExpr->getStepExpr();
-	
+
 	// Perform type inference for the start expression
 	TypeSetString startTypeStr = pStartExpr? inferTypes(
 		pStartExpr,
@@ -1804,7 +1805,7 @@ TypeSetString inferTypes(
 		varTypes,
 		exprTypeMap
 	):TypeSetString();
-		
+
 	// Perform type inference for the step expression
 	TypeSetString stepTypeStr = pStepExpr? inferTypes(
 		pStepExpr,
@@ -1817,20 +1818,20 @@ TypeSetString inferTypes(
 	// Get the type sets for the start, step and end expressions
 	TypeSet startTypeSet = startTypeStr.empty()? TypeSet():startTypeStr[0];
 	TypeSet stepTypeSet = stepTypeStr.empty()? TypeSet():stepTypeStr[0];
-	
+
 	// Declare a flag to indicate that the range comprises only integer values
 	bool isInteger = true;
-	
+
 	// If the start or step type sets are empty, we cannot guarantee the range is integer
 	if (startTypeSet.empty() || stepTypeSet.empty())
 		isInteger = false;
-	
+
 	// If some of the possible start or step types are non-integer, the range is not integer
 	for (TypeSet::iterator typeItr = startTypeSet.begin(); typeItr != startTypeSet.end(); ++typeItr)
 		if (typeItr->isInteger() == false) isInteger = false;
 	for (TypeSet::iterator typeItr = stepTypeSet.begin(); typeItr != stepTypeSet.end(); ++typeItr)
 		if (typeItr->isInteger() == false) isInteger = false;
-	
+
 	// Return the type info for a 2D F64 matrix of unknown size
 	return typeSetStrMake(TypeInfo(
 		DataObject::MATRIX_F64,
@@ -1860,10 +1861,10 @@ TypeSetString inferTypes(
 )
 {
 	//std::cout << "Inferring matrix expression" << std::endl;
-		
+
 	// Get the rows of the matrix expression
 	const MatrixExpr::RowVector& rows = pMatrixExpr->getRows();
-	
+
 	// If the expression is empty
 	if (rows.empty() || rows[0].empty())
 	{
@@ -1882,36 +1883,36 @@ TypeSetString inferTypes(
 
 	// Declare a variable to tell if the size is known
 	bool sizeKnown = true;
-	
+
 	// Declare a variable to tell if all arguments are integer
 	bool allInteger = true;
-	
+
 	// Declare a variable to tell if a complex value was encountered
 	bool complexArg = false;
-	
+
 	// Declare a variable to tell if an unknown type argument was encountered
 	bool unknownArg = false;
-	
+
 	// Create a dimension vector to store the output matrix size
 	TypeInfo::DimVector outMatSize(2, 0);
-	
+
 	// Declare a set for the possible first argument types
 	std::set<DataObject::Type> firstType;
-	
+
 	// For each row of the matrix expression
 	for (MatrixExpr::RowVector::const_iterator rowItr = rows.begin(); rowItr != rows.end(); ++rowItr)
 	{
 		// Get a reference to this row
 		const MatrixExpr::Row& row = *rowItr;
-	
+
 		// For each element in this row
 		for (MatrixExpr::Row::const_iterator colItr = row.begin(); colItr != row.end(); ++colItr)
 		{
 			// Get a reference to this expression
 			const Expression* pExpr = *colItr;
-			
+
 			//std::cout << "Inferring argument type" << std::endl;
-			
+
 			// Perform type inference for the expression
 			TypeSetString exprTypeStr = inferTypes(
 				pExpr,
@@ -1920,10 +1921,10 @@ TypeSetString inferTypes(
 				varTypes,
 				exprTypeMap
 			);
-			
+
 			//std::cout << "Done inferring argument type:" << std::endl;
 			//std::cout << ((exprTypeStr.empty() || exprTypeStr[0].empty())? "unknown":exprTypeStr[0].begin()->toString()) << std::endl;
-			
+
 			// If the expression type is unknown
 			if (exprTypeStr.empty() || exprTypeStr[0].empty())
 			{
@@ -1933,10 +1934,10 @@ TypeSetString inferTypes(
 
 				// Set the unknown argument flag
 				unknownArg = true;
-				
+
 				// Set the size known flag to false
 				sizeKnown = false;
-				
+
 				// Set the all integer flag to false
 				allInteger = false;
 			}
@@ -1944,22 +1945,22 @@ TypeSetString inferTypes(
 			{
 				// Get a reference to the expression type set
 				const TypeSet& argTypes = exprTypeStr[0];
-							
+
 				// Declare a variable to store the previous matrix size
 				TypeInfo::DimVector prevSize;
-				
+
 				// For each possible type
 				for (TypeSet::const_iterator typeItr = argTypes.begin(); typeItr != argTypes.end(); ++typeItr)
 				{
 					// Get the matrix size vector
 					const TypeInfo::DimVector& matSize = typeItr->getMatSize();
-					
+
 					// If this is the first argument
 					if (rowItr == rows.begin() && colItr == row.begin())
 					{
 						// Add the object type to the potential type set
 						firstType.insert(typeItr->getObjType());
-						
+
 						// If this is the first possible type
 						if (typeItr == argTypes.begin())
 						{
@@ -1968,7 +1969,7 @@ TypeSetString inferTypes(
 							outMatSize[0] = 0;
 							outMatSize[1] = 0;
 						}
-					}				
+					}
 					else
 					{
 						// If the output matrix does not have the same number of dimensions as the current size matrix
@@ -1988,20 +1989,20 @@ TypeSetString inferTypes(
 							}
 						}
 					}
-						
+
 					// If this is the first possible type and the size is known
 					if (typeItr == argTypes.begin() && typeItr->getSizeKnown())
 					{
 						// Ensure that the matrix size is valid
 						assert (matSize.size() >= 2);
-						
+
 						// If this is the first element of the row
 						if (colItr == row.begin())
 						{
 							// Update the number of rows
 							outMatSize[0] += matSize[0];
 						}
-						
+
 						// If we are in the first row
 						if (rowItr == rows.begin())
 						{
@@ -2009,7 +2010,7 @@ TypeSetString inferTypes(
 							outMatSize[1] += matSize[1];
 						}
 					}
-					
+
 					// If the size is unknown
 					if (typeItr->getSizeKnown() == false)
 					{
@@ -2028,32 +2029,32 @@ TypeSetString inferTypes(
 								sizeKnown = false;
 							}
 						}
-						
+
 						// Update the previous matrix size
-						prevSize = matSize; 
+						prevSize = matSize;
 					}
-					
+
 					// If the argument is non-integer
 					if (typeItr->isInteger() == false)
 					{
 						// Set the integer flag to false
 						allInteger = false;
 					}
-					
+
 					// If the type is complex
 					if (typeItr->getObjType() == DataObject::MATRIX_C128)
 					{
 						// Set the complex arg flag to true
 						complexArg = true;
-					}			
+					}
 				}
 			}
 		}
 	}
-	
+
 	/*
 	std::cout << "Done examining matrix expr arguments" << std::endl;
-	
+
 	std::cout << "Out mat size: " << std::endl;
 	if (outMatSize.size() != 2)
 		std::cout << "not 2D" << std::endl;
@@ -2062,7 +2063,7 @@ TypeSetString inferTypes(
 		std::cout << outMatSize[0] << "x" << outMatSize[1] << std::endl;
 	}
 	*/
-	
+
 	// Determine if the output will is a 2D matrix
 	bool is2D = (sizeKnown && outMatSize.size() == 2);
 
@@ -2071,20 +2072,20 @@ TypeSetString inferTypes(
 	std::cout << "Num out dims: " << outMatSize.size() << std::endl;
 	std::cout << "is 2D: " << is2D << std::endl;
 	*/
-	
+
 	// Determine if the output will be scalar
-	bool isScalar = (sizeKnown && outMatSize == TypeInfo::DimVector(2, 1)); 
-	
+	bool isScalar = (sizeKnown && outMatSize == TypeInfo::DimVector(2, 1));
+
 	// If an unknown argument was found and we have some type info, add the complex type as a possible output type
 	if (unknownArg && firstType.empty() == false) firstType.insert(DataObject::MATRIX_C128);
 
 	// TODO: do we know for sure that the output *will* be complex?
 	// If a complex argument was found and we have some type info, add the complex type as a possible output type
 	if (complexArg && firstType.empty() == false) firstType.insert(DataObject::MATRIX_C128);
-	
+
 	// Declare a set for the possible output types
 	TypeSet outTypes;
-	
+
 	// For each possible output type
 	for (std::set<DataObject::Type>::iterator typeItr = firstType.begin(); typeItr != firstType.end(); ++typeItr)
 	{
@@ -2100,7 +2101,7 @@ TypeSetString inferTypes(
 			TypeSet()
 		));
 	}
-	
+
 	// Return the possible output types
 	return TypeSetString(1, outTypes);
 }
@@ -2122,7 +2123,7 @@ TypeSetString inferTypes(
 {
 	// Get the rows of the matrix expression
 	const CellArrayExpr::RowVector& rows = pCellExpr->getRows();
-	
+
 	// If the expression is empty
 	if (rows.empty() || rows[0].empty())
 	{
@@ -2138,32 +2139,32 @@ TypeSetString inferTypes(
 			TypeSet()
 		));
 	}
-	
+
 	// Declare a variable to tell if an unknown type argument was encountered
 	bool unknownArg = false;
-	
+
 	// Create a dimension vector to store the output matrix size
 	TypeInfo::DimVector outMatSize;
-	
+
 	// Store the output matrix size
 	outMatSize.push_back(rows.size());
 	outMatSize.push_back(rows[0].size());
-	
+
 	// Declare a set for the possible cell stored types
 	TypeSet cellTypes;
-	
+
 	// For each row of the matrix expression
 	for (CellArrayExpr::RowVector::const_iterator rowItr = rows.begin(); rowItr != rows.end(); ++rowItr)
 	{
 		// Get a reference to this row
 		const CellArrayExpr::Row& row = *rowItr;
-	
+
 		// For each element in this row
 		for (CellArrayExpr::Row::const_iterator colItr = row.begin(); colItr != row.end(); ++colItr)
 		{
 			// Get a reference to this expression
 			const Expression* pExpr = *colItr;
-			
+
 			// Perform type inference for the expression
 			TypeSetString exprTypeStr = inferTypes(
 				pExpr,
@@ -2183,25 +2184,25 @@ TypeSetString inferTypes(
 			{
 				// Get a reference to the expression type set
 				const TypeSet& argTypes = exprTypeStr[0];
-							
+
 				// Add the possible types to the cell array stored type set
 				cellTypes.insert(argTypes.begin(), argTypes.end());
 			}
 		}
 	}
-	
+
 	// Determine if the output will is a 2D matrix
 	bool is2D = (outMatSize.size() == 2);
-	
+
 	// Determine if the output will be scalar
-	bool isScalar = (outMatSize == TypeInfo::DimVector(2, 1)); 
-	
+	bool isScalar = (outMatSize == TypeInfo::DimVector(2, 1));
+
 	// If an unknown argument was found, clear the possible cell types
 	if (unknownArg)	cellTypes.clear();
-	
+
 	// Reduce the set of possible cell types
 	cellTypes = typeSetReduce(cellTypes);
-	
+
 	// Return the type info for the output cell array
 	return typeSetStrMake(TypeInfo(
 		DataObject::CELLARRAY,
@@ -2232,10 +2233,10 @@ TypeSetString inferTypes(
 {
 	// Get the handle symbol
 	SymbolExpr* pSymbol = pHandleExpr->getSymbolExpr();
-	
+
 	// Lookup the handle symbol in the reaching definitions map
 	VarDefMap::const_iterator varDefItr = reachDefs.find(pSymbol);
-			
+
 	// If we are not in the case where the only reaching definition comes from the local env., return no information
 	if (varDefItr == reachDefs.end() || varDefItr->second.size() != 1 || varDefItr->second.find(NULL) == varDefItr->second.end())
 		return TypeSetString();
@@ -2249,7 +2250,7 @@ TypeSetString inferTypes(
 
 	// Get a typed pointer to the function
 	Function* pFunction = (Function*)pObject;
-		
+
 	// If the function is a nested function
 	if (pFunction->isProgFunction() && ((ProgFunction*)pFunction)->getParent() != NULL)
 		return TypeSetString();
@@ -2286,16 +2287,16 @@ void analyzeIndexTypes(
 )
 {
 	//std::cout << "Analyzing index types" << std::endl;
-	
+
 	// Get the number of indexing dimensions
 	numIndexDims = argVector.size();
-	
+
 	// Initially, set all flags to optimistic values
 	isScalarIndexing = true;
 	isMatrixIndexing = false;
-	
+
 	// TODO: full range exprs can allow us to determine size, in some cases
-	
+
 	// For each argument expression
 	for (ParamExpr::ExprVector::const_iterator argItr = argVector.begin(); argItr != argVector.end(); ++argItr)
 	{
@@ -2310,24 +2311,24 @@ void analyzeIndexTypes(
 			varTypes,
 			exprTypeMap
 		);
-		
+
 		// If one of the arguments has unknown type
 		if (outTypes.size() == 0 || outTypes[0].size() == 0)
 		{
 			// If this is the only argument, this could be matrix indexing
 			if (argVector.size() == 1)
 				isMatrixIndexing = true;
-			
+
 			// Set flags to pessimistic values
 			isScalarIndexing = false;
-			
+
 			// Continue to the next argument
 			continue;
 		}
-		
+
 		// Get a reference to the possible argument types
 		const TypeSet& argTypes = outTypes.front();
-		
+
 		// For each possible argument type
 		for (TypeSet::const_iterator typeItr = argTypes.begin(); typeItr != argTypes.end(); ++typeItr)
 		{
@@ -2340,14 +2341,14 @@ void analyzeIndexTypes(
 					// If this is the only argument, this could be matrix indexing
 					if (argVector.size() == 1)
 						isMatrixIndexing = true;
-					
+
 					// Set the scalar indexing flag to false
 					isScalarIndexing = false;
 				}
-			}			
-		}		
+			}
+		}
 	}
-	
+
 	//std::cout << "Done analyzing index types" << std::endl;
 }
 
@@ -2365,14 +2366,14 @@ void varTypeMapReduce(
 	/*
 	// Create an object for the output map
 	VarTypeMap outMap;
-	
+
 	// For each element of the input map
 	for (VarTypeMap::const_iterator itr = varTypes.begin(); itr != varTypes.end(); ++itr)
 	{
 		// Reduce the type set for this variable
 		outMap[itr->first] = typeSetReduce(itr->second);
 	}
-	
+
 	// Return the output map
 	return outMap;
  	*/
@@ -2385,7 +2386,7 @@ void varTypeMapReduce(
 		if (liveVars.find(itr->first) == liveVars.end() && weedMap)
 			continue;
 		*/
-		
+
 		// Reduce the type set for this variable
 		varTypes[itr->first] = typeSetReduce(itr->second);
 	}
@@ -2405,21 +2406,21 @@ VarTypeMap varTypeMapUnion(
 {
 	// Create an object for the output map
 	VarTypeMap outMap;
-	
+
 	// For each element of the first map
 	for (VarTypeMap::const_iterator itrA = mapA.begin(); itrA != mapA.end(); ++itrA)
 	{
 		// Attempt to find this symbol in the other map
 		VarTypeMap::const_iterator itrB = mapB.find(itrA->first);
-			
+
 		// If the symbol was not found, skip it
 		if (itrB == mapB.end())
-			continue;	
-		
+			continue;
+
 		// Store the union of the type sets from both maps in the output map
 		outMap[itrA->first] = typeSetUnion(itrA->second, itrB->second);
 	}
-	
+
 	// Return the output map
 	return outMap;
 }
@@ -2438,17 +2439,17 @@ VarTypeMap typeMapVectorUnion(
 	// If the vector is empty, return an empty type map
 	if (typeMaps.empty())
 		return VarTypeMap();
-	
+
 	// Create a map to store the output and initialize it to the first type map
 	VarTypeMap outMap = typeMaps[0];
-	
+
 	// For each type map, except the first
 	for (size_t i = 1; i < typeMaps.size(); ++i)
 	{
 		// Perform the union of this map and the output map
 		outMap = varTypeMapUnion(outMap, typeMaps[i]);
-	}	
-	
+	}
+
 	// Return the output map
 	return outMap;
 }
