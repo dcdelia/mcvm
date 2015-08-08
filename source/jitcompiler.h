@@ -843,6 +843,9 @@ private:
 	// Method to get the constant corresponding to an object type
 	static llvm::Constant* getObjType(DataObject::Type objType);
 
+        // Method to get a string representation of a LLVM Type
+        static std::string& LLVMTypeToString(llvm::Type* type);
+
         /* DCD: initial MCJIT integration */
         typedef std::map<llvm::Module*, llvm::FunctionPassManager*> FPMMap;
         static MCJITHelper* s_JITHelper;

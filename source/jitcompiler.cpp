@@ -200,6 +200,21 @@ void JITCompiler::runFPM(llvm::Function* F) {
 }
 
 /***************************************************************
+* Function: JITCompiler::LLVMTypeToString()
+* Purpose : Get a string representation of a LLVM type
+* Initial : Daniele Cono D'Elia on August 2015
+****************************************************************
+Revisions and bug fixes:
+*/
+std::string& JITCompiler::LLVMTypeToString(llvm::Type* type) {
+    static std::string type_str;
+    static llvm::raw_string_ostream type_rso(type_str);
+    type_str.clear();
+    type->print(type_rso);
+    return type_rso.str();
+}
+
+/***************************************************************
 * Function: CompError::toString()
 * Purpose : Get a string representation of a compilation error
 * Initial : Maxime Chevalier-Boisvert on March 9, 2009
@@ -1788,7 +1803,8 @@ void JITCompiler::readVariables(
 * Purpose : Read a single variable from the environment
 * Initial : Maxime Chevalier-Boisvert on March 22, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Improved printing of LLVM types by
+Daniele Cono D'Elia, August 2015.
 */
 JITCompiler::Value JITCompiler::readVariable(
 	llvm::IRBuilder<>& irBuilder,
@@ -1859,8 +1875,7 @@ JITCompiler::Value JITCompiler::readVariable(
 	if (ConfigManager::s_verboseVar)
 	{
 		// Log the storage mode and object type
-      std::cout << "Storage mode is: ";
-      storageMode->dump();
+      std::cout << "Storage mode is: " << LLVMTypeToString(storageMode) << std::endl;
       std::cout << "Obj type is: " << DataObject::getTypeName(objectType) << std::endl;
 	}
 
@@ -1908,7 +1923,8 @@ void JITCompiler::markVarsWritten(
 * Purpose : Print the contents of a variable map
 * Initial : Maxime Chevalier-Boisvert on June 17, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Improved printing of LLVM types by
+Daniele Cono D'Elia, August 2015.
 */
 void JITCompiler::printVarMap(
 	const VariableMap& varMap
@@ -1931,10 +1947,10 @@ void JITCompiler::printVarMap(
 
 		// Output the storage mode of the variable
 		if (value.pValue == NULL)
-			std::cout << "env stored";
+                    std::cout << "env stored";
 		else {
-          value.pValue->getType()->dump();
-        }
+                    std::cout << LLVMTypeToString(value.pValue->getType());
+                }
 
 		// Output the associated object type
 		std::cout << " (" << DataObject::getTypeName(value.objType) << ") " << std::endl;
@@ -2049,7 +2065,8 @@ llvm::Type* JITCompiler::widestStorageMode(
 * Purpose : Change the storage mode of a value
 * Initial : Maxime Chevalier-Boisvert on May 21, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Improved printing of LLVM types by
+Daniele Cono D'Elia, August 2015.
 */
 llvm::Value* JITCompiler::changeStorageMode(
 	llvm::IRBuilder<>& irBuilder,
@@ -2073,10 +2090,10 @@ llvm::Value* JITCompiler::changeStorageMode(
 	{
 		// Log info about the storage mode conversion
 		std::cout << "Performing storage mode conversion: ";
-		pCurVal->getType()->dump();
+		std::cout << LLVMTypeToString(pCurVal->getType());
 		std::cout <<  " ==> ";
-		newMode->dump();
-        std::cout << " (";
+		std::cout << LLVMTypeToString(newMode);
+                std::cout << " (";
 		std::cout << DataObject::getTypeName(objType) << ")" << std::endl;
 	}
 
@@ -5232,7 +5249,8 @@ JITCompiler::Value JITCompiler::compBinaryExpr(
 * Purpose : Generate code for binary expression operations
 * Initial : Maxime Chevalier-Boisvert on June 1, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Improved printing of LLVM types by
+Daniele Cono D'Elia, August 2015.
 */
 JITCompiler::Value JITCompiler::compBinaryOp(
 	Expression* pLeftExpr,
@@ -5306,15 +5324,12 @@ JITCompiler::Value JITCompiler::compBinaryOp(
 	);
 
 	// If we are in verbose mode
-	if (ConfigManager::s_verboseVar)
-	{
-		// Log the operand types
-      std::cout << "Left val type : ";
-      leftVal.pValue->getType()->dump();
-      std::cout << " (" << DataObject::getTypeName(leftVal.objType) << ")" << std::endl;
-      std::cout << "Right val type: ";
-      rightVal.pValue->getType()->dump();
-      std::cout  << " (" << DataObject::getTypeName(rightVal.objType) << ")" << std::endl;
+	if (ConfigManager::s_verboseVar) {
+            // Log the operand types
+            std::cout << "Left val type : " << LLVMTypeToString(leftVal.pValue->getType());
+            std::cout << " (" << DataObject::getTypeName(leftVal.objType) << ")" << std::endl;
+            std::cout << "Right val type: " << LLVMTypeToString(rightVal.pValue->getType());
+            std::cout  << " (" << DataObject::getTypeName(rightVal.objType) << ")" << std::endl;
 	}
 
 	// Create an IR builder for the current basic block
@@ -5340,10 +5355,8 @@ JITCompiler::Value JITCompiler::compBinaryOp(
 
 		// If we are in verbose mode, log the selected storage mode
 		if (ConfigManager::s_verboseVar) {
-
-          std::cout << "Selected storage mode for bin op: ";
-          outMode->dump();
-        }
+                    std::cout << "Selected storage mode for bin op: " << LLVMTypeToString(outMode) << std::endl;
+                }
 
 		// Determine the output type
 		DataObject::Type outType = boolOutput? DataObject::LOGICALARRAY:DataObject::MATRIX_F64;
@@ -8478,7 +8491,8 @@ llvm::LoadInst* JITCompiler::loadMemberValue(
 * Purpose : Create a native function call
 * Initial : Maxime Chevalier-Boisvert on March 9, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: Improved printing of LLVM types by
+Daniele Cono D'Elia, August 2015.
 */
 llvm::CallInst* JITCompiler::createNativeCall(
 	llvm::IRBuilder<>& irBuilder,
@@ -8496,14 +8510,19 @@ llvm::CallInst* JITCompiler::createNativeCall(
 	if (ConfigManager::s_verboseVar)
 	{
 		// Log the native call creation
-		std::cout << "Creating native call to: " << nativeFunc.name << std::endl;
+		std::cout << "Creating native call to: " << nativeFunc.name << "(";
 
 		// Log the argument types
-		for (size_t i = 0; i < arguments.size(); ++i) {
-          std::cout << "Arg #" << (i+1) << " ";
-          arguments[i]->getType()->dump();
+                size_t numArgs = arguments.size();
+		for (size_t i = 0; i < numArgs; ++i) {
+                    std::cout << LLVMTypeToString(arguments[i]->getType());
+                    if (i != numArgs - 1) {
+                        std::cout << ", ";
+                    }
+                }
+                std::cout << ")" << std::endl;
         }
-	}
+
 
 	// Create the call
         llvm::Function* functionToCall = getLLVMFunctionToCall(nativeFunc.pLLVMFunc, s_MCJITModuleInUse);
