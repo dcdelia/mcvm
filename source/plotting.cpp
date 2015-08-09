@@ -21,24 +21,24 @@
 //constructor, deconstructor
 Plotting::Plotting(ArrayObj* arguments):
   LS_number(0),LineWidth(0), MarkerEdgeColor(0),MarkerFaceColor(0), MarkerSize(0){
-  char* autogen;
+  char* autogen = NULL;
   tmpnam(autogen);
   name = (std::string)autogen;
   argumentList = arguments ;
 };
 
 
-//this method loop  the arguments to compose a mapping string, and call argIsValid to verify the validity of the arguments. 
+//this method loop  the arguments to compose a mapping string, and call argIsValid to verify the validity of the arguments.
 //return true if there is any option inputed
 void Plotting::parsing(){
-  
+
   unsigned int i=0;
   char argType;
   std::ofstream gnuplotdatafile;
-  
+
   numberofArgs = argumentList ->getSize();
-  
-  
+
+
   //function that look if the argument is a matrix or a string, and return of character according to the result ('m' for matrix, 'o' for option string, 'e' for error)
   argMappingstr="";
   do{
@@ -50,18 +50,13 @@ void Plotting::parsing(){
       argMappingstr+= argType;
     }
   }while(++i<numberofArgs);
-  
+
   trioNparsing();
-  
-  
-  
-  
-  
-  
+
 }
 
 void Plotting::callGnuplot(){
-  
+
   std::string optfile = "gnuplotrun.p";
   //std::string optfile =  "~/tmp/mcvmtemp/gnuplotrun"+name+".p";
   //popen is a nonstandart function used to open pipe.
@@ -75,7 +70,7 @@ void Plotting::callGnuplot(){
 
 //this method parse the option and fill a string of option.
 void Plotting::printOpt(){
-  
+
   CharArrayObj* pOptString;
   unsigned int i,j,k;
   std::string optStr;//unparsed string of matlab option
@@ -87,8 +82,8 @@ void Plotting::printOpt(){
   bool optParsed;
   //for each arguments
   for(k=0;k< argMappingstr.size();k++){
-    
-    //if the arg is an option	
+
+    //if the arg is an option
     if(argMappingstr[k]=='o'){
       bufferOptStr += "\n";
       // Get a pointer to the option string
@@ -101,7 +96,7 @@ void Plotting::printOpt(){
       optParsed=false;
       for(j=0; j<2; j++){
 	for( i=0; i< optStr.size() ;i++){
-	  
+
 	  if(optStr[i]=='-' && optStr[i+1] == '-'){
 	    //Dashed line
 	    optParsed?bufferOptStr+=" lt 2":lstyle= "--";
@@ -116,78 +111,78 @@ void Plotting::printOpt(){
 	  }else if(optStr[i]== ':'){
 	    //dotted line
 	    optParsed?bufferOptStr+=" lt 4":lstyle=":";
-	    
+
 	  }else if(optStr[i]=='+'){
 	    //marker +
 	    optParsed?bufferOptStr+=" pt 1":mstyle="+";
-	    
+
 	  }else if(optStr[i]=='o'){
 	    //marker o
 	    optParsed?bufferOptStr+=" pt 6":mstyle="o";
-	    
+
 	  }else if(optStr[i]=='.'){
 	    //marker point
 	    optParsed?bufferOptStr+=" pt 0":mstyle=".";
-	    
+
 	  }else if(optStr[i]=='x'){
 	    //marker cross
 	    optParsed?bufferOptStr+=" pt 2":mstyle="x";
-	    
+
 	  }else if(optStr[i]=='s'){
 	    //marker square
 	    optParsed?bufferOptStr+=" pt 4":mstyle="s";
-	    
+
 	  }else if(optStr[i]=='d'){
 	    //marker diamond
 	    optParsed?bufferOptStr+=" pt 12":mstyle="d";
-	    
+
 	  }else if(optStr[i]=='^'){
 	    //marker upward triangle
 	    optParsed?bufferOptStr+=" pt 8":mstyle="^";
-	    
+
 	  }else if(optStr[i]=='v'){
 	    //marker downward triangle
 	    optParsed?bufferOptStr+=" pt 9":mstyle="v";
-	    
+
 	  }else if(optStr[i]=='>'){
 	    //marker right triangle
 	    optParsed?bufferOptStr+=" pt 10":mstyle=">";
-	    
+
 	  }else if(optStr[i]=='<'){
 	    //marker left triangle
 	    optParsed?bufferOptStr+=" pt 11":mstyle="<";
-	    
+
 	  }else if(optStr[i]=='p'){
-	    //marker pentagram					
+	    //marker pentagram
 	  }else if(optStr[i]=='h'){
 	    //marker hexagram
 	  }else if(optStr[i]=='r'){
 	    //color red
 	    optParsed?bufferOptStr+=" lc 1":color="r";
-	    
+
 	  }else if(optStr[i]=='g'){
 	    //color green
 	    optParsed?bufferOptStr+=" lc 2":color="g";
-	    
+
 	  }else if(optStr[i]=='b'){
 	    //color blue
 	    optParsed?bufferOptStr+=" lc 3":color="b";
-	    
+
 	  }else if(optStr[i]=='c'){
 	    //color Cyan
 	    optParsed?bufferOptStr+=" lc 5":color="c";
-	    
+
 	  }else if(optStr[i]=='m'){
 	    //color magenta
 	    optParsed?bufferOptStr+=" lc 4":color="m";
 	  }else if(optStr[i]=='y'){
 	    //color yellow
 	    optParsed?bufferOptStr+=" lc 6":color="y";
-	    
+
 	  }else if(optStr[i]=='k'){
 	    //color black
 	    optParsed?bufferOptStr+=" lc 7":color="k";
-	    
+
 	  }else if(optStr[i]=='w'){
 	    //color white->grey
 	    optParsed?bufferOptStr+=" lc 9":color="w";
@@ -204,20 +199,20 @@ void Plotting::printOpt(){
 	  }
 	}
 	optStr=lstyle+mstyle+color;
-	
+
 	optParsed=true;
       }
-      
-      
+
+
       if(LineWidth != 0)bufferOptStr+="linewidth"+::toString(LineWidth);
       if(MarkerSize != 0)bufferOptStr+="pointsize"+::toString(MarkerSize);
       bufferOptStr += "\n";
     }
   }
-  
+
   dataoptBuffer = bufferOptStr;
-  
-  
+
+
 }
 
 
@@ -234,62 +229,62 @@ void Plotting::printData(){
   const char* optchar = optfile.c_str();
   MatrixF64Obj* currentMatrix;
   //store matrix in gnuplotdata.dat
-  
-  
+
+
   dataBuffer += "#Data for gnuplot, as received and saved by mclab  \n";
   currentMatrix = (MatrixF64Obj*)(BaseMatrixObj*)argumentList->getObject(0);
-  inSizeX = currentMatrix->getSize();	
-  
+  inSizeX = currentMatrix->getSize();
+
   // for each row(point)
   for(unsigned int k=1;k<inSizeX[1];k++){
     dataBuffer += "\n";
     for(unsigned int i=0;i<trioMappingstr.size();i++){
-      
-      
+
+
       if(trioMappingstr[i] == 'x'){
 	currentMatrix = (MatrixF64Obj*)(BaseMatrixObj*)argumentList->getObject(i);
-	inSizeX = currentMatrix->getSize();		
-	
+	inSizeX = currentMatrix->getSize();
+
 	//for each dimension of the current matrix
-	
+
 	for(unsigned int j = 1;j<inSizeX.size();j++){
 	  // for each column
-	  
+
 	  ss << std::setprecision(15) << currentMatrix->getElem2D(j,k);
 	  dataBuffer += ss.str() + "\t";
 	  ss.str("");
-	  
+
 	}
       }else if(trioMappingstr[i] == 'y'){
 	currentMatrix = (MatrixF64Obj*)(BaseMatrixObj*)argumentList->getObject(i);
 	inSizeY = currentMatrix->getSize();
-	
+
 	//for each dimension of the current matrix
 	for(unsigned int j = 1;j<inSizeY.size();j++){
 	  // for each column
 	  ss << std::setprecision(15) << currentMatrix->getElem2D(j,k);
 	  dataBuffer += ss.str() + "\t";
 	  ss.str("");
-	  
+
 	}
       }else{
 	continue;
       }
-      
+
     }
   }
   //print the buffer of data in a file
   std::ofstream gnuplotdatafile(datachar);
   gnuplotdatafile << dataBuffer;
   gnuplotdatafile.close();
-  
-  
+
+
   for(unsigned int i= 0;i < trioID_number;i++){
-    
+
     //get a Trio
     currentTrio = trioRef[i];
     //construct the call to the plot func of gnuplot
-    if(i==0){ 
+    if(i==0){
       dataoptBuffer += "plot \""+datafile+ "\" " ;
     }else{
       dataoptBuffer+= ", \""+datafile+ "\"" ;
@@ -301,19 +296,19 @@ void Plotting::printData(){
       dataoptBuffer += " ";
     }
     if(currentTrio.opt !=0)dataoptBuffer += "  with "+graphStyle+" ls " + ::toString(currentTrio.opt);
-    
+
   }
-  
+
   //print the plot call in a file
   gnuplotdatafile.open(optchar);
   gnuplotdatafile << dataoptBuffer;
   gnuplotdatafile.close();
-  
+
   return;
 }
 
 
-/* This method parse the string of arguments to determine the amount of line to be plotted 
+/* This method parse the string of arguments to determine the amount of line to be plotted
  * (in trio, x\y\o or x\y or y\o or y)     */
 void Plotting::trioNparsing(){
   MatrixF64Obj* pMatrixArg;
@@ -327,9 +322,9 @@ void Plotting::trioNparsing(){
   unsigned int i = 0;
   trioMappingstr = "";
   trioRef.resize(numberofArgs);
-  
+
   do{
-    
+
     //1st: is [i] a matrix?-> X : quit
     if(argMappingstr[i]=='m'){
       //[i+1] exist?
@@ -338,44 +333,44 @@ void Plotting::trioNparsing(){
 	if(argMappingstr[i+1]=='m'){
 	  //[i+2] exist?
 	  if((i+2)<numberofArgs){
-	    
+
 	    //3rd: is [i+2] a matrix? -> Quit : Option
 	    if(argMappingstr[i+2]=='m'){
-	      
+
 	      checkMatrix(i,i+1);
 	      trioID ref_array = {++X_number,++Y_number,0};
 	      trioRef[trioID_number]=ref_array;
-	      
+
 	      trioID_number++;
 	      trioMappingstr += "xy";
 	      i++;
-	      
+
 	    }else if(argMappingstr[i+2]=='o'){
-	      
-	      
+
+
 	      checkMatrix(i,i+1);
-	      
+
 	      trioID ref_array = {++X_number,++Y_number,++opt_number};
-	      
+
 	      trioRef[trioID_number]=ref_array;
-	      
+
 	      trioID_number++;
 	      trioMappingstr += "xyo";
 	      i++;i++;
-	      
+
 	    }
 	  }else{
 	    checkMatrix(i,i+1);
-	    
+
 	    trioID ref_array = {++X_number,++Y_number,0};
 	    trioRef[trioID_number]=ref_array;
-	    
+
 	    trioID_number++;
 	    trioMappingstr += "xy";
 	    i++;
 	    //quit
 	  }
-	  
+
 	  pMatrixArg = (MatrixF64Obj*)((BaseMatrixObj*)argumentList->getObject(i));
 	  Y_lenght = pMatrixArg->getSize().size();
 	  if(Y_lenght>1 && Y_lenght<passNumber){
@@ -383,18 +378,18 @@ void Plotting::trioNparsing(){
 	    X_number--;
 	    i--;
 	  }
-	  
+
 	}else if(argMappingstr[i+1]=='o'){
-	  
+
 	  trioID ref_array  ={++X_number,0,++opt_number};
 	  trioRef[trioID_number]=ref_array;
 	  trioID_number++;
 	  trioMappingstr += "xo";
 	  i++;
-	  
+
 	}
       }else{
-	
+
 	trioID ref_array ={++X_number,0,0};
 	trioRef[trioID_number]=ref_array;
 	trioID_number++;
@@ -405,12 +400,12 @@ void Plotting::trioNparsing(){
     }else if(argMappingstr[i]=='s'){
       trioMappingstr += "s";
     }
-    
-    
-    
-    
+
+
+
+
   }while(++i<numberofArgs);
-  
+
 }
 
 //this method check the validity of the inputed matrices.
@@ -418,72 +413,72 @@ void Plotting::checkMatrix(int arg1, int arg2){
   unsigned int i;
   MatrixF64Obj* pMatrixArg1;
   MatrixF64Obj* pMatrixArg2;
-  
+
   pMatrixArg1 = (MatrixF64Obj*)((BaseMatrixObj*)argumentList->getObject(arg1));
   inSizeX = pMatrixArg1->getSize();
-  
+
   pMatrixArg2 = (MatrixF64Obj*)((BaseMatrixObj*)argumentList->getObject(arg2));
-  inSizeY = pMatrixArg2->getSize(); 
-  //TODO -> this run error doesnt seems to work, get thrown even when the vectors are fine 
+  inSizeY = pMatrixArg2->getSize();
+  //TODO -> this run error doesnt seems to work, get thrown even when the vectors are fine
   for(i=1;i<inSizeX.size();i++){
     //if(inSizeX[i]!= inSizeX[0])throw RunError("Vectors must be of the same length");
   }
   for(i=0;i<inSizeY.size();i++){
     //if(inSizeY[i] != inSizeX[0]) throw RunError("Vectors must be of the same length");
   }
-  
+
 }
 
 //this method check if the argument of rank [argRank] is a matrix or a string, and return a character accordingly('m' for matrix, 'o' for string, 'e' for error/other)
 char Plotting::argIsValid(int argRank){
-  
+
   int argRankNext = argRank+1;
-  
+
   if(argumentList->getObject(argRank)->getType()== DataObject::MATRIX_F64 ){
-    
-    
+
+
     return 'm';
-    
-    
+
+
   }else if( argumentList->getObject(argRank)->getType()== DataObject::CHARARRAY){
-    
+
     // Get a pointer to the arrayopyion
     optionStrings = "";
     pOptString = (CharArrayObj*)argumentList->getObject(argRank);
     optionStrings += pOptString->getString();
-    
+
     if(optionStrings[0]=='M'||optionStrings[0]=='L'){
-      
+
       if(optionStrings=="LineWidth"){
 	tempOption = ((CharArrayObj*)argumentList ->getObject(argRankNext))->getScalar();
 	// LineWidth = atoi(tempOption.c_str());
 	LineWidth = (int) tempOption;
 	return 's';
-	
+
       }else if(optionStrings=="MarkerEdgeColor"){
 	tempOption = ((CharArrayObj*)argumentList ->getObject(argRankNext))->getScalar();
 	//MarkerEdgeColor = atoi(tempOption.c_str());
 	MarkerEdgeColor = (int) tempOption;
 	return 's';
-	
+
       }else if(optionStrings=="MarkerFaceColor"){
 	tempOption = ((CharArrayObj*)argumentList ->getObject(argRankNext))->getScalar();
 	//MarkerFaceColor= atoi(tempOption.c_str());
 	MarkerFaceColor = (int) tempOption;
 	return 's';
-	
+
       }else if(optionStrings=="MarkerSize"){
 	tempOption = ((CharArrayObj*)argumentList ->getObject(argRankNext))->getScalar();
 	//MarkerSize = atoi(tempOption.c_str());
 	MarkerSize = (int) tempOption;
-	return 's';				
+	return 's';
       }
     }
     return 'o';
-    
+
   }else{
     throw RunError("Expected matrix or string as argument "+argRank);
     return 'e';
   }
-  
+
 }

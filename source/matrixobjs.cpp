@@ -62,17 +62,17 @@ bool BaseMatrixObj::validIndices(const ArrayObj* pSlice) const
 	{
 		// Get the object
 		DataObject* pObj = pSlice->getObject(i);
-		
+
 		// If the object is a matrix
 		if (pObj->getType() == DataObject::MATRIX_F64)
 		{
 			// Get a typed pointer to the matrix object
 			MatrixF64Obj* pMatrix = (MatrixF64Obj*)pObj;
-			
+
 			// Get pointers to the start and end values
 			const float64* pStartVal = pMatrix->getElements();
 			const float64* pEndVal = pStartVal + pMatrix->getNumElems();
-			
+
 			// For each value in the matrix
 			for (const float64* pValue = pStartVal; pValue != pEndVal; ++pValue)
 			{
@@ -87,16 +87,16 @@ bool BaseMatrixObj::validIndices(const ArrayObj* pSlice) const
 		{
 			// Do nothing, logical arrays are always valid indices
 		}
-		
+
 		// If the object is a range
 		else if (pObj->getType() == DataObject::RANGE)
 		{
 			// Get a typed pointer to the range object
 			RangeObj* pRange = (RangeObj*)pObj;
-			
+
 			// If this is the full range
 			if (pRange->isFullRange())
-			{			
+			{
 				// Do nothing, the full range is always valid
 			}
 			else
@@ -106,15 +106,15 @@ bool BaseMatrixObj::validIndices(const ArrayObj* pSlice) const
 					return false;
 			}
 		}
-		
+
 		// Otherwise, for any other object type
 		else
 		{
 			// This is not a valid index list
 			return false;
 		}
-	}	
-	
+	}
+
 	// All indices are valid
 	return true;
 }
@@ -127,11 +127,11 @@ bool BaseMatrixObj::validIndices(const ArrayObj* pSlice) const
 Revisions and bug fixes:
 */
 DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixObj* pAssignMatrix) const
-{		
+{
 	// Create a vector to store the max indices
 	DimVector maxInds;
 	maxInds.reserve(max(m_size.size(), pSlice->getSize()));
-	
+
 	// For each element of the slice
 	for (size_t i = 0; i < pSlice->getSize(); ++i)
 	{
@@ -140,17 +140,17 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 
 		// Declare a variable for the maximum index found
 		size_t maxIndex = 0;
-		
+
 		// If the object is a matrix
 		if (pObj->getType() == DataObject::MATRIX_F64)
 		{
 			// Get a typed pointer to the matrix object
 			MatrixF64Obj* pMatrix = (MatrixF64Obj*)pObj;
-			
+
 			// Get pointers to the start and end values
 			const float64* pStartVal = pMatrix->getElements();
 			const float64* pEndVal = pStartVal + pMatrix->getNumElems();
-			
+
 			// For each value in the matrix
 			for (const float64* pValue = pStartVal; pValue != pEndVal; ++pValue)
 			{
@@ -164,11 +164,11 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 		{
 			// Get a typed pointer to the matrix object
 			LogicalArrayObj* pMatrix = (LogicalArrayObj*)pObj;
-				
+
 			// Get pointers to the start and end values
 			const bool* pStartVal = pMatrix->getElements();
 			const bool* pEndVal = pStartVal + pMatrix->getNumElems();
-			
+
 			// For each value in the matrix
 			for (const bool* pValue = pStartVal; pValue != pEndVal; ++pValue)
 			{
@@ -176,19 +176,19 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 				if (*pValue) ++maxIndex;
 			}
 		}
-		
+
 		// If the object is a range
 		else if (pObj->getType() == DataObject::RANGE)
 		{
 			// Get a typed pointer to the range object
 			RangeObj* pRange = (RangeObj*)pObj;
-			
+
 			// If this is the full range
 			if (pRange->isFullRange())
-			{			
+			{
 				// If this is the last slice element but not the last matrix dimension
 				if (i == pSlice->getSize() - 1 && i < m_size.size() - 1)
-				{	
+				{
 					// Compute the size of the last extended dimension
 					maxIndex = m_size[i];
 					for (size_t dim = i + 1; dim < m_size.size(); ++dim)
@@ -198,17 +198,17 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 				{
 					// Ensure that this is a valid matrix dimension
 					assert (i < m_size.size());
-									
+
 					// Set the max index to the last element of this dimension
 					maxIndex = m_size[i];
 				}
-				
+
 				// If the max index is currently 0 and an assignment matrix is specified
 				if (maxIndex == 0 && pAssignMatrix)
 				{
 					// Get the size of the assignment matrix
 					const DimVector& assignSize = pAssignMatrix->getSize();
-					
+
 					// Update the max index based on the assignment matrix size
 					if (i < assignSize.size())
 					{
@@ -227,21 +227,21 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 				maxIndex = max(maxIndex, size_t(pRange->getEndVal()));
 			}
 		}
-		
+
 		// Otherwise, for any other object type
 		else
 		{
 			// Break an assertion
 			assert (false);
 		}
-		
+
 		// If this is the last slice element but not the last matrix dimension
 		if (i == pSlice->getSize() - 1 && i < m_size.size() - 1 && !(i == 0 && m_size[1] < 2))
-		{			
+		{
 			// Compute the number of times this index covers this dimension and the remainder
 			size_t numCover = maxIndex / m_size[i] + 1;
 			size_t numOver  = maxIndex % m_size[i];
-			
+
 			// If the remainder is 0
 			if (numOver == 0)
 			{
@@ -249,26 +249,26 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 				numOver = m_size[i];
 				numCover -= 1;
 			}
-			
+
 			// Store the max index for this dimension
 			maxInds.push_back(numOver);
-			
+
 			// For all remaining dimensions
 			for (size_t dimIndex = i + 1; dimIndex < m_size.size(); ++dimIndex)
-			{		
+			{
 				// If no previous dimensions are fully covered
 				if (numCover == 0)
 				{
 					// Set the index to 1 for this dimension
 					maxInds.push_back(1);
-					
+
 					// Move to the next dimension
-					continue;					
+					continue;
 				}
-				
+
 				// If this is the last matrix dimension
 				if (dimIndex == m_size.size() - 1)
-				{					
+				{
 					// Add the last index to the vector
 					maxInds.push_back(numCover);
 				}
@@ -276,11 +276,11 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 				{
 					// Store the previous coverage count
 					size_t prevNumCover = numCover;
-					
+
 					// Update the coverage count and remainder
 					numCover = prevNumCover / m_size[dimIndex] + 1;
 					numOver  = prevNumCover % m_size[dimIndex];
-					
+
 					// If the remainder is 0
 					if (numOver == 0)
 					{
@@ -288,7 +288,7 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 						numOver = m_size[dimIndex];
 						numCover -= 1;
 					}
-					
+
 					// Store the max index for this dimension
 					maxInds.push_back(numOver);
 				}
@@ -299,8 +299,8 @@ DimVector BaseMatrixObj::getMaxIndices(const ArrayObj* pSlice, const BaseMatrixO
 			// Store the max index for this dimension
 			maxInds.push_back(maxIndex);
 		}
-	}		
-	
+	}
+
 	// Return the max indices
 	return maxInds;
 }
@@ -316,13 +316,13 @@ bool BaseMatrixObj::boundsCheckND(const DimVector& indices) const
 {
 	// Ensure that the vector is not empty
 	assert (indices.size() != 0);
-	
+
 	// For each dimension
 	for (size_t i = 0; i < indices.size(); ++i)
 	{
-		// Extract the index 
+		// Extract the index
 		size_t index = indices[i];
-		
+
 		// If we are inside the matrix dimensions
 		if (i < m_size.size())
 		{
@@ -333,7 +333,7 @@ bool BaseMatrixObj::boundsCheckND(const DimVector& indices) const
 				if (index > m_size[i])
 					return false;
 			}
-			
+
 			// Otherwise, this is the last index
 			else
 			{
@@ -341,22 +341,22 @@ bool BaseMatrixObj::boundsCheckND(const DimVector& indices) const
 				size_t dimSize = m_size[i];
 				for (++i; i < m_size.size(); ++i)
 					dimSize *= m_size[i];
-				
+
 				// Ensure the last index fits in the virtual dimension
 				if (index > dimSize)
 					return false;
 			}
 		}
-		
+
 		// Otherwise, we are past the matrix dimensions
 		else
 		{
 			// Ensure the index is 0
 			if (index > 0)
-				return false;				
+				return false;
 		}
-	}		
-	
+	}
+
 	// The matrix bounds are respected
 	return true;
 }
@@ -372,9 +372,9 @@ void BaseMatrixObj::expandMatrix(BaseMatrixObj* pMatrix, size_t* pIndices, size_
 {
 	// Create a dimension vector
 	DimVector newSize(pIndices, pIndices + numIndices);
-	
+
 	// Expand the matrix to the new size
-	pMatrix->expand(newSize);	
+	pMatrix->expand(newSize);
 }
 
 /***************************************************************
@@ -389,7 +389,7 @@ bool BaseMatrixObj::multCompatible(const BaseMatrixObj* pMatrixA, const BaseMatr
 	// Ensure that both matrices are bidimensional
 	if (pMatrixA->m_size.size() != 2 || pMatrixB->m_size.size() != 2)
 		return false;
-	
+
 	// Test that both matrices are square with compatible inner dimensions
 	return (pMatrixA->m_size[1] == pMatrixB->m_size[0]);
 }
@@ -406,7 +406,7 @@ bool BaseMatrixObj::leftDivCompatible(const BaseMatrixObj* pMatrixA, const BaseM
 	// Ensure that both matrices are bidimensional
 	if (pMatrixA->m_size.size() != 2 || pMatrixB->m_size.size() != 2)
 		return false;
-	
+
 	// Test that both matrices have the same number of rows and that b has only one column
 	return (pMatrixA->m_size[0] == pMatrixB->m_size[0]);
 }
@@ -428,22 +428,22 @@ template <> DataObject* MatrixObj<Complex128>::convert(DataObject::Type outType)
 		{
 			// Create a logical array object of the same size
 			MatrixObj<bool>* pOutput = new MatrixObj<bool>(m_size);
-			
+
 			// Convert each element of this matrix
 			for (size_t i = 1; i <= m_numElements; ++i)
 			{
 				// Get the boolean value of this element
 				bool boolVal = (getElem1D(i) != Complex128(0));
-				
+
 				// Set the value in the output
 				pOutput->setElem1D(i, boolVal);
 			}
-			
+
 			// Return the output object
 			return pOutput;
 		}
 		break;
-	
+
 		// For all other output types
 		default:
 		{
@@ -477,14 +477,14 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixMult(const MatrixObj* 
 {
 	// Ensure that both matrices are square with compatible inner dimensions
 	assert (multCompatible(pMatrixA, pMatrixB));
-		
+
 	// Create a new matrix object to store the result
 	MatrixObj* pResult = new MatrixObj(pMatrixA->m_size[0], pMatrixB->m_size[1]);
-	
+
 	// If either of the input matrices are isEmpty, return early
 	if (pMatrixA->isEmpty() || pMatrixB->isEmpty())
 		return pResult;
-#ifndef MCVM_USE_ACML	
+#ifndef MCVM_USE_ACML
 	// Call the BLAS function to perform the multiplication
 	// This computes: alpha*A*B + beta*C, A(m,k), B(k,n), C(m,n)
 	cblas_dgemm(
@@ -501,7 +501,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixMult(const MatrixObj* 
 		pMatrixB->m_size[0],		// Stride of B
 		0.0,						// beta = 0.0
 		pResult->m_pElements,		// C is the result
-		pResult->m_size[0]			// Stride of result 
+		pResult->m_size[0]			// Stride of result
 	);
 #else
 	dgemm('n','n',pMatrixA->m_size[0],pMatrixB->m_size[1],pMatrixA->m_size[1],1.0,pMatrixA->m_pElements,pMatrixA->m_size[0],pMatrixB->m_pElements,pMatrixB->m_size[0],0.0,pResult->m_pElements,pResult->m_size[0]);
@@ -509,7 +509,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixMult(const MatrixObj* 
 
 	// Increment the matrix multiplication count
 	PROF_INCR_COUNTER(Profiler::MATRIX_MULT_COUNT);
-	
+
 	// Return a pointer to the result matrix
 	return pResult;
 }
@@ -525,16 +525,16 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::matrixMult(const Matri
 {
 	// Ensure that both matrices are square with compatible inner dimensions
 	assert (multCompatible(pMatrixA, pMatrixB));
-	
+
 	// Create a new matrix object to store the result
 	MatrixObj* pResult = new MatrixObj(pMatrixA->m_size[0], pMatrixB->m_size[1]);
-	
+
 	// If either of the input matrices are isEmpty, return early
 	if (pMatrixA->isEmpty() || pMatrixB->isEmpty())
 		return pResult;
-	
+
 	// Create complex objects for the alpha and beta parameters
-#ifndef MCVM_USE_ACML	
+#ifndef MCVM_USE_ACML
 	// Call the BLAS function to perform the multiplication
 	// This computes: alpha*A*B + beta*C, A(m,k), B(k,n), C(m,n)
 	Complex128 alpha = 1.0;
@@ -553,7 +553,7 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::matrixMult(const Matri
 		pMatrixB->m_size[0],		// Stride of B
 		&beta,						// beta = 0.0
 		pResult->m_pElements,		// C is the result
-		pResult->m_size[0]			// Stride of result 
+		pResult->m_size[0]			// Stride of result
 	);
 #else
 	doublecomplex alpha;
@@ -563,13 +563,13 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::matrixMult(const Matri
 	beta.real = 1.0;
 	beta.imag = 0.0;
 	doublecomplex *ptrA = (doublecomplex *)(pMatrixA->m_pElements);
-	doublecomplex *ptrB = (doublecomplex *)(pMatrixB->m_pElements); 
+	doublecomplex *ptrB = (doublecomplex *)(pMatrixB->m_pElements);
 	doublecomplex *ptrC = (doublecomplex *)(pResult->m_pElements);
 	zgemm('n','n',pMatrixA->m_size[0],pMatrixB->m_size[1],pMatrixA->m_size[1],&alpha,ptrA,pMatrixA->m_size[0],ptrB,pMatrixB->m_size[0],&beta,ptrC,pResult->m_size[0]);
 #endif
 	// Increment the matrix multiplication count
 	PROF_INCR_COUNTER(Profiler::MATRIX_MULT_COUNT);
-	
+
 	// Return a pointer to the result matrix
 	return pResult;
 }
@@ -585,11 +585,11 @@ template <> MatrixObj<float64>* MatrixObj<float64>::scalarMult(const MatrixObj* 
 {
 	// Create a new matrix object to store the result
 	MatrixObj* pResult = new MatrixObj(pMatrix->m_size);
-	
+
 	// If the input matrix is isEmpty, return early
 	if (pMatrix->isEmpty())
 		return pResult;
-#ifndef MCVM_USE_ACML	
+#ifndef MCVM_USE_ACML
 	// Call the BLAS function to perform the multiplication
 	// This computes: y = alpha * x + y
 	cblas_daxpy(
@@ -603,7 +603,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::scalarMult(const MatrixObj* 
 #else
 	daxpy(pMatrix->m_numElements,scalar,pMatrix->m_pElements,1,pResult->m_pElements,1);
 #endif
-	
+
 	// Return a pointer to the result matrix
 	return pResult;
 }
@@ -619,11 +619,11 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::scalarMult(const Matri
 {
 	// Create a new matrix object to store the result
 	MatrixObj* pResult = new MatrixObj(pMatrix->m_size);
-	
+
 	// If the input matrix is isEmpty, return early
 	if (pMatrix->isEmpty())
 		return pResult;
-#ifndef MCVM_USE_ACML	
+#ifndef MCVM_USE_ACML
 	// Call the BLAS function to perform the multiplication
 	// This computes: y = alpha * x + y
 	cblas_zaxpy(
@@ -648,28 +648,30 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::scalarMult(const Matri
 ****************************************************************
 Revisions and bug fixes:
 */
+/* DCD TODO this method might be broken as it yields a missing
+ return statement warning during compilation! */
 template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixObj* pMatrixA, const MatrixObj* pMatrixB)
 {
 	// Ensure that the matrices have compatible dimensions
 	assert (leftDivCompatible(pMatrixA, pMatrixB));
-	
+
 	// If the matrix A is square
 	if (pMatrixA->isSquare())
 	{
 		std::cout << "found a square matrix -- will use dgesv to solve the system" << std::endl;
-		
+
 		// Make a copy of B to store the output
 		MatrixF64Obj* pOutMatrix = pMatrixB->copy();
-#ifdef MCVM_USE_CLAPACK	
+#ifdef MCVM_USE_CLAPACK
 		integer n 		= pMatrixA->m_size[0];		// N - number of rows/cols of A
-		integer nrhs 	= pMatrixB->m_size[1];		// number of cols of B	
+		integer nrhs 	= pMatrixB->m_size[1];		// number of cols of B
 		doublereal* a	= pMatrixA->m_pElements;	// Matrix A
 		integer lda		= pMatrixA->m_size[0];		// Stride of A
 		integer* ipiv	= new integer[n];			// (output) pivot indices
 		doublereal* b	= pOutMatrix->m_pElements;	// Matrix B
 		integer ldb		= pMatrixB->m_size[0];		// Stride of B
 		integer info;								// (output) convergence info
-		
+
 		// Call the DGESV function to solve the system A * X = B
 		dgesv_(
 			&n,
@@ -681,7 +683,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixOb
 			&ldb,
 			&info
 		);
-		
+
 		// Delete the pivot indices array
 		delete [] ipiv;
 #else
@@ -700,12 +702,12 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixOb
 		// If the result could not be computed, throw an exception
 		if (info != 0)
 			throw RunError("illegal value in input matrix");
-		
+
 		// Return the output matrix
 		return pOutMatrix;
-	}	
-*/		
-		
+	}
+*/
+
 		// If the result was correctly computed, return it
 		if (info == 0)
 			return pOutMatrix;
@@ -732,7 +734,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixOb
 		integer k = m>n?n:m;
 		MatrixObj *pMatrixQR = pMatrixA->copy();
 		doublereal *a = pMatrixQR->m_pElements; // the elements of matrix A
-		integer lda = pMatrixA->m_size[0];  // lda/Stride/leading dimension of A	
+		integer lda = pMatrixA->m_size[0];  // lda/Stride/leading dimension of A
 		integer *jpvt = new integer[n];     // the permutation matrix, input is 0, meaning all columns can freely by pivoted ('free columns')
 		doublereal *tau = new doublereal[k];  //tau - scalar factors of the elementary reflectors (output)
 		doublereal *work;
@@ -753,7 +755,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixOb
 				&info
 		);
 
-		//allocate work size array		
+		//allocate work size array
 		lwork = static_cast<integer>(worksize);
 		work = new doublereal[lwork];
 
@@ -775,7 +777,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixOb
 		int k = m>n?n:m;
 		MatrixObj *pMatrixQR = pMatrixA->copy();
 		double *a = pMatrixQR->m_pElements; // the elements of matrix A
-		int lda = pMatrixA->m_size[0];  // lda/Stride/leading dimension of A	
+		int lda = pMatrixA->m_size[0];  // lda/Stride/leading dimension of A
 		int *jpvt = new int[n];     // the permutation matrix, input is 0, meaning all columns can freely by pivoted ('free columns')
 		double *tau = new double[k];  //tau - scalar factors of the elementary reflectors (output)
 		int info;
@@ -788,7 +790,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixOb
 #endif
 
 #endif
-		
+
 		//****compute QB = (Q'*B) via dormqr
 		MatrixObj *pMatrixQB = pMatrixB->copy(); //need a place to store qb, and input of B
 #ifdef MCVM_USE_CLAPACK
@@ -835,7 +837,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixOb
 		} else {
 			std::cout << "will reuse work array: old "<<lwork<<" vs new: "<<newLwork<<std::endl;
 		}
-			
+
 
 		//compute Q'*B
 		dormqr_(
@@ -965,7 +967,7 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixLeftDiv(const MatrixOb
 		return pResult;
 
 #endif
-	}	
+	}
 }
 
 /***************************************************************
@@ -979,23 +981,23 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::matrixLeftDiv(const Ma
 {
 	// Ensure that the matrices have compatible dimensions
 	assert (leftDivCompatible(pMatrixA, pMatrixB));
-	
+
 	// If the matrix A is square
 	if (pMatrixA->isSquare())
 	{
 #ifdef MCVM_USE_CLAPACK
 		// Make a copy of B to store the output
 		MatrixC128Obj* pOutMatrix = pMatrixB->copy();
-		
+
 		integer n 			= pMatrixA->m_size[0];						// N - number of rows/cols of A
-		integer nrhs 		= pMatrixB->m_size[1];						// number of cols of B	
+		integer nrhs 		= pMatrixB->m_size[1];						// number of cols of B
 		doublecomplex* a	= (doublecomplex*)pMatrixA->m_pElements;	// Matrix A
 		integer lda			= pMatrixA->m_size[0];						// Stride of A
 		integer* ipiv		= new integer[n];							// (output) pivot indices
 		doublecomplex* b	= (doublecomplex*)pOutMatrix->m_pElements;	// Matrix B
 		integer ldb			= pMatrixB->m_size[0];						// Stride of B
 		integer info;													// (output) convergence info
-		
+
 		// Call the ZGESV function to solve the system A * X = B
 		zgesv_(
 			&n,
@@ -1007,19 +1009,19 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::matrixLeftDiv(const Ma
 			&ldb,
 			&info
 		);
-		
+
 		// Delete the pivot indices array
 		delete [] ipiv;
 #else
 		MatrixC128Obj* pOutMatrix = pMatrixB->copy();
-		
+
 		int n 			= pMatrixA->m_size[0];						// N - number of rows/cols of A
-		int nrhs 		= pMatrixB->m_size[1];						// number of cols of B	
+		int nrhs 		= pMatrixB->m_size[1];						// number of cols of B
 		int lda			= pMatrixA->m_size[0];						// Stride of A
 		int* ipiv		= new int[n];							// (output) pivot indices
 		int ldb			= pMatrixB->m_size[0];						// Stride of B
 		int info;													// (output) convergence info
-#ifdef MCVM_USE_ACML	
+#ifdef MCVM_USE_ACML
 		doublecomplex* a	= (doublecomplex*)pMatrixA->m_pElements;	// Matrix A
 		doublecomplex* b	= (doublecomplex*)pOutMatrix->m_pElements;	// Matrix B
 		zgesv_(
@@ -1038,7 +1040,7 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::matrixLeftDiv(const Ma
 		lapack_complex_double *b = (lapack_complex_double*)pOutMatrix->m_pElements;
 		info = LAPACKE_zgesv(LAPACK_COL_MAJOR,n,nrhs,a,lda,ipiv,b,ldb);
 #endif
-		
+
 		// Delete the pivot indices array
 		delete [] ipiv;
 
@@ -1046,14 +1048,14 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::matrixLeftDiv(const Ma
 		// If the result could not be computed, throw an exception
 		if (info != 0)
 			throw RunError("illegal value in input matrix");
-		
+
 		// Return the output matrix
 		return pOutMatrix;
 	}
-	
+
 	// Otherwise, A is an M-by-N matrix
 	else
-	{		
+	{
 		// Throw an exception
 		throw RunError("M-by-N matrix support for left division currently unimplemented");
 	}
@@ -1074,9 +1076,9 @@ template <> MatrixObj<float64>* MatrixObj<float64>::matrixRightDiv(const MatrixO
 		// Perform the operation with a matrix lhs and a scalar rhs
 		return rhsScalarArrayOp<DivOp<float64>, float64, float64>(pMatrixA, pMatrixB->getScalar());
 	}
-	
+
 	// TODO: find more direct solution
-	
+
 	// Return the equivalence (A' \ B')'
 	return transpose(matrixLeftDiv(transpose(pMatrixA), transpose(pMatrixB)));
 }
@@ -1096,9 +1098,9 @@ template <> MatrixObj<Complex128>* MatrixObj<Complex128>::matrixRightDiv(const M
 		// Perform the operation with a matrix lhs and a scalar rhs
 		return rhsScalarArrayOp<DivOp<Complex128>, Complex128, Complex128>(pMatrixA, pMatrixB->getScalar());
 	}
-	
+
 	// TODO: find more direct solution
-	
+
 	// Return the equivalence (A' \ B')'
 	return transpose(matrixLeftDiv(transpose(pMatrixA), transpose(pMatrixB)));
 }

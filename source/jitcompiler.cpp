@@ -753,7 +753,7 @@ void JITCompiler::setUpParameters(ProgFunction* pFunction, CompFunction& compFun
 	// Create a struct type for the input parameters
 	compVersion.pInStructType = llvm::StructType::get(*s_Context, compVersion.inArgStoreModes, false);
 
-	const ProgFunction::ParamVector& inParams = pFunction->getInParams();
+	//const ProgFunction::ParamVector& inParams = pFunction->getInParams();
 	const ProgFunction::ParamVector& outParams = pFunction->getOutParams();
 
 	// Find the variable type map for after the function body
@@ -853,7 +853,8 @@ void JITCompiler::compFuncReturn(llvm::IRBuilder<>& exitBuilder, CompFunction& c
 
 			// Compare the pointer value to NULL
 			llvm::Value* pPtrVal = currentBuilder.CreatePtrToInt(pReadValue, getIntType(PLATFORM_POINTER_SIZE));
-			llvm::Value* pNULLVal = llvm::ConstantInt::get(getIntType(PLATFORM_POINTER_SIZE), NULL);
+			llvm::Value* pNULLVal = llvm::ConstantInt::get(
+                                getIntType(PLATFORM_POINTER_SIZE),(size_t)NULL);/* DCD: cast to size_t added to suppress warning */
 			llvm::Value* pCompVal = currentBuilder.CreateICmpEQ(pPtrVal, pNULLVal);
 
 		    // Create a basic block to set the number of values written
@@ -2608,7 +2609,7 @@ void JITCompiler::compWrapperFunc(
 	llvm::IRBuilder<> entryBuilder(pEntryBlock);
 
 	// Get an iterator to the function arguments
-	llvm::Function::arg_iterator funcArgItr = pFuncObj->arg_begin();
+	//llvm::Function::arg_iterator funcArgItr = pFuncObj->arg_begin();
 
 	// Get a pointer to the function's input argument
 	llvm::Value* pInArrayArg = pFuncObj->arg_begin();

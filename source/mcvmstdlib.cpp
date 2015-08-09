@@ -17,6 +17,7 @@
 // =========================================================================== //
 
 // Header files
+#include <cmath>
 #include <ctime>
 #include <cctype>
 #include <cstdio>
@@ -1609,7 +1610,8 @@ namespace mcvm { namespace stdlib {
 	* Purpose : Determine the existence of an object
 	* Initial : Maxime Chevalier-Boisvert on July 11, 2009
 	****************************************************************
-	Revisions and bug fixes:
+	Revisions and bug fixes: added 'return nullptr' statement to
+        suppress warning by Daniele Cono D'Elia, August 2015.
 	*/
 	ArrayObj* existFunc(ArrayObj* pArguments)
 	{
@@ -1676,6 +1678,9 @@ namespace mcvm { namespace stdlib {
 				return new ArrayObj(new MatrixF64Obj(1));
 			}
 		}
+
+                // suppress warning on missing return statement
+                return nullptr;
 	}
 
 	/***************************************************************
@@ -2495,6 +2500,57 @@ namespace mcvm { namespace stdlib {
 
 				// Compute the square root of this element
 				*pOut = ::log2(*pIn);
+			}
+
+			// Return the output matrix
+			return new ArrayObj(pOutMatrix);
+		}
+
+		// For all other argument types
+		else
+		{
+			// Throw an exception
+			throw RunError("unsupported argument type");
+		}
+	}
+
+        /***************************************************************
+	* Function: logFunc()
+	* Purpose : Compute natural logarithms
+	* Initial : Daniele Cono D'Elia on August 9, 2015.
+	****************************************************************
+	Revisions and bug fixes:
+	*/
+	ArrayObj* logFunc(ArrayObj* pArguments)
+	{
+		// Ensure there is one argument
+		if (pArguments->getSize() != 1)
+			throw RunError("invalid argument count");
+
+		// Get a pointer to the argument
+		DataObject* pArgument = pArguments->getObject(0);
+
+		// If the argument is a matrix
+		if (pArgument->getType() == DataObject::MATRIX_F64)
+		{
+			// Get a typed pointer to the argument
+			MatrixF64Obj* pInMatrix = (MatrixF64Obj*)pArgument;
+
+			// Create a new matrix to store the output
+			MatrixF64Obj* pOutMatrix = new MatrixF64Obj(pInMatrix->getSize());
+
+			// Compute a pointer to the last element of the input matrix
+			float64* pLastElem = pInMatrix->getElements() + pInMatrix->getNumElems();
+
+			// For each element of the matrices
+			for (float64 *pIn = pInMatrix->getElements(), *pOut = pOutMatrix->getElements(); pIn < pLastElem; ++pIn, ++pOut)
+			{
+				// If the value is negative
+				if (*pIn < 0)
+					throw RunError("logarithms of negative numbers unsupported");
+
+				// Compute the square root of this element
+				*pOut = ::log(*pIn);
 			}
 
 			// Return the output matrix
@@ -4621,7 +4677,8 @@ namespace mcvm { namespace stdlib {
 	* Purpose : Create and initialize a matrix
 	* Initial : Maxime Chevalier-Boisvert on January 29, 2009
 	****************************************************************
-	Revisions and bug fixes:
+	Revisions and bug fixes: added support for log by Daniele Cono
+        D'Elia, August 2015.
 	*/
 	ArrayObj* zerosFunc(ArrayObj* pArguments)
 	{
@@ -4662,7 +4719,8 @@ namespace mcvm { namespace stdlib {
 	LibFunction isnumeric	("isnumeric", isnumericFunc	, boolScalarTypeMapping			);
 	LibFunction length		("length"	, lengthFunc	, intScalarTypeMapping			);
 	LibFunction load		("load"		, loadFunc		, loadFuncTypeMapping			);
-	LibFunction log2		("log2"		, log2Func		, unaryOpTypeMapping<false>		);
+	LibFunction log                 ("log"		, logFunc		, unaryOpTypeMapping<false>		);
+        LibFunction log2		("log2"		, log2Func		, unaryOpTypeMapping<false>		);
 	LibFunction ls			("ls"		, lsFunc		, stringValueTypeMapping		);
 	LibFunction max			("max"		, maxFunc		, maxFuncTypeMapping			);
 	LibFunction mean		("mean"		, meanFunc		, vectorOpTypeMapping<false>	);
@@ -4700,7 +4758,8 @@ namespace mcvm { namespace stdlib {
 	* Purpose : Load the library functions into the interpreter
 	* Initial : Maxime Chevalier-Boisvert on January 28, 2009
 	****************************************************************
-	Revisions and bug fixes:
+	Revisions and bug fixes: added support for natural logarithm by
+        Daniele Cono D'Elia, August 2015.
 	*/
 	void loadLibrary()
 	{
@@ -4737,6 +4796,7 @@ namespace mcvm { namespace stdlib {
 		Interpreter::setBinding(isnumeric.getFuncName()	, (DataObject*)&isnumeric	);
 		Interpreter::setBinding(length.getFuncName()	, (DataObject*)&length		);
 		Interpreter::setBinding(load.getFuncName()		, (DataObject*)&load		);
+                Interpreter::setBinding(log.getFuncName()		, (DataObject*)&log		);
 		Interpreter::setBinding(log2.getFuncName()		, (DataObject*)&log2		);
 		Interpreter::setBinding(ls.getFuncName()		, (DataObject*)&ls			);
 		Interpreter::setBinding(max.getFuncName()		, (DataObject*)&max			);
