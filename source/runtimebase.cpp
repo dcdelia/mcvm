@@ -30,7 +30,7 @@
 * Initial : Maxime Chevalier-Boisvert on June 15, 2007
 ****************************************************************
 Revisions and bug fixes:
-*/	
+*/
 RunError::RunError(const std::string& text, const IIRNode* pNode)
 {
 	// Add the error information
@@ -43,16 +43,16 @@ RunError::RunError(const std::string& text, const IIRNode* pNode)
 * Initial : Maxime Chevalier-Boisvert on June 15, 2007
 ****************************************************************
 Revisions and bug fixes:
-*/	
-void RunError::addInfo(const std::string& text, const IIRNode* pNode)	
+*/
+void RunError::addInfo(const std::string& text, const IIRNode* pNode)
 {
 	// Create an error info object
 	ErrorInfo errorInfo;
-	
+
 	// Store the error information
 	errorInfo.text = text;
 	errorInfo.pNode = pNode;
-	
+
 	// Add the error information to the stack
 	m_errorStack.push_back(errorInfo);
 }
@@ -63,21 +63,21 @@ void RunError::addInfo(const std::string& text, const IIRNode* pNode)
 * Initial : Maxime Chevalier-Boisvert on June 15, 2007
 ****************************************************************
 Revisions and bug fixes:
-*/	
+*/
 std::string RunError::toString() const
 {
 	// Declare a string to store the description text
 	std::string text;
-	
+
 	// For each entry in the stack
 	for (size_t i = m_errorStack.size() - 1; i < m_errorStack.size(); --i)
 	{
 		// Get a reference to the error info
 		const ErrorInfo& errorInfo = m_errorStack[i];
-		
+
 		// Add the error text to the string
 		text += errorInfo.text;
-		
+
 		// If there is an associated expression
 		if (errorInfo.pNode != NULL)
 		{
@@ -87,19 +87,19 @@ std::string RunError::toString() const
 				// Add a colon and a newline
 				text += ":\n  ";
 			}
-			
+
 			// Add a textual representation of the expression
-			text += errorInfo.pNode->toString() + "\n"; 
+			text += errorInfo.pNode->toString() + "\n";
 		}
-		
+
 		// If this is not the last iteration
 		if (i != 0)
 		{
 			// Add a newline
 			text += "\n";
 		}
-	}	
-	
+	}
+
 	// Return the error description
 	return text;
 }
@@ -134,11 +134,11 @@ bool getBoolValue(const DataObject* pObject)
 		{
 			// Get a typed pointer to the matrix
 			const MatrixF64Obj* pMatrixObj = (MatrixF64Obj*)pObject;
-			
+
 			// Get pointers to the start and end values
 			const float64* pStartVal = pMatrixObj->getElements();
 			const float64* pEndVal = pStartVal + pMatrixObj->getNumElems();
-			
+
 			// For each value in the matrix
 			for (const float64* pValue = pStartVal; pValue != pEndVal; ++pValue)
 			{
@@ -146,7 +146,7 @@ bool getBoolValue(const DataObject* pObject)
 				if (*pValue == 0)
 					return false;
 			}
-			
+
 			// The result is a true boolean value
 			return true;
 		}
@@ -157,11 +157,11 @@ bool getBoolValue(const DataObject* pObject)
 		{
 			// Get a typed pointer to the matrix
 			const LogicalArrayObj* pMatrixObj = (LogicalArrayObj*)pObject;
-			
+
 			// Get pointers to the start and end values
 			const bool* pStartVal = pMatrixObj->getElements();
 			const bool* pEndVal = pStartVal + pMatrixObj->getNumElems();
-			
+
 			// For each value in the matrix
 			for (const bool* pValue = pStartVal; pValue != pEndVal; ++pValue)
 			{
@@ -169,22 +169,22 @@ bool getBoolValue(const DataObject* pObject)
 				if (*pValue == false)
 					return false;
 			}
-			
+
 			// The result is a true boolean value
 			return true;
 		}
 		break;
-		
+
 		// Character array
 		case DataObject::CHARARRAY:
 		{
 			// Get a typed pointer to the matrix
 			const CharArrayObj* pMatrixObj = (CharArrayObj*)pObject;
-			
+
 			// Get pointers to the start and end values
 			const char* pStartVal = pMatrixObj->getElements();
 			const char* pEndVal = pStartVal + pMatrixObj->getNumElems();
-			
+
 			// For each value in the matrix
 			for (const char* pValue = pStartVal; pValue != pEndVal; ++pValue)
 			{
@@ -192,19 +192,19 @@ bool getBoolValue(const DataObject* pObject)
 				if (*pValue == 0)
 					return false;
 			}
-			
+
 			// The result is a true boolean value
 			return true;
 		}
 		break;
-		
+
 		// Unsupported typed
 		default:
 		{
 			throw RunError("unsupported object type in boolean evaluation");
 		}
 	}
-	
+
 	// Object evaluates to false
 	return false;
 }
@@ -226,22 +226,22 @@ int32 getInt32Value(const DataObject* pObject)
 		{
 			// Get a typed pointer to the matrix
 			const MatrixF64Obj* pMatrixObject = (MatrixF64Obj*)pObject;
-			
+
 			// If the matrix is not a scalar
 			if (!pMatrixObject->isScalar())
 			{
 				// Throw an exception
-				throw RunError("nonscalar matrix in integer evaluation");				
+				throw RunError("nonscalar matrix in integer evaluation");
 			}
-			
+
 			// Get the floating-point value of the scalar
 			float64 floatVal = pMatrixObject->getElem1D(1);
-			
+
 			// Get the integer and fractional parts of the value
 			float64 fracPart;
 			float64 intPart;
 			fracPart = modf(floatVal, &intPart);
-			
+
 			// If the floating-point part is nonzero
 			if (fracPart != 0)
 			{
@@ -250,10 +250,10 @@ int32 getInt32Value(const DataObject* pObject)
 			}
 
 			// Return the integer part of the value
-			return (int32)intPart;		
+			return (int32)intPart;
 		}
 		break;
-		
+
 		// Unsupported typed
 		default:
 		{
@@ -267,7 +267,9 @@ int32 getInt32Value(const DataObject* pObject)
 * Purpose : Evaluate the integer value of an object
 * Initial : Maxime Chevalier-Boisvert on January 29, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: fixed a copy-paste error in messages
+for exceptions (was "floating-point evaluation") by Daniele Cono
+D'Elia, August 2015.
 */
 int64 getInt64Value(const DataObject* pObject)
 {
@@ -279,22 +281,22 @@ int64 getInt64Value(const DataObject* pObject)
 		{
 			// Get a typed pointer to the matrix
 			const MatrixF64Obj* pMatrixObject = (MatrixF64Obj*)pObject;
-			
+
 			// If the matrix is not a scalar
 			if (!pMatrixObject->isScalar())
 			{
 				// Throw an exception
-				throw RunError("nonscalar matrix in integer evaluation");				
+				throw RunError("nonscalar matrix in integer evaluation");
 			}
-			
+
 			// Get the floating-point value of the scalar
 			float64 floatVal = pMatrixObject->getElem1D(1);
-			
+
 			// Get the integer and fractional parts of the value
 			float64 fracPart;
 			float64 intPart;
 			fracPart = modf(floatVal, &intPart);
-			
+
 			// If the floating-point part is nonzero
 			if (fracPart != 0)
 			{
@@ -303,52 +305,52 @@ int64 getInt64Value(const DataObject* pObject)
 			}
 
 			// Return the integer part of the value
-			return (int64)intPart;		
+			return (int64)intPart;
 		}
 		break;
-		
+
 		// Character array
 		case DataObject::CHARARRAY:
 		{
 			// Get a typed pointer to the matrix
 			const CharArrayObj* pMatrixObject = (CharArrayObj*)pObject;
-			
+
 			// If the matrix is not a scalar
 			if (!pMatrixObject->isScalar())
 			{
 				// Throw an exception
-				throw RunError("nonscalar matrix in floating-point evaluation");				
+				throw RunError("nonscalar matrix in integer evaluation");
 			}
-			
+
 			// Get the integer value of the scalar
 			int64 intVal = (int64)pMatrixObject->getScalar();
-			
+
 			// Return the integer value directly
 			return intVal;
 		}
 		break;
-		
+
 		// Logical array
 		case DataObject::LOGICALARRAY:
 		{
 			// Get a typed pointer to the matrix
 			const LogicalArrayObj* pMatrixObject = (LogicalArrayObj*)pObject;
-			
+
 			// If the matrix is not a scalar
 			if (!pMatrixObject->isScalar())
 			{
 				// Throw an exception
-				throw RunError("nonscalar matrix in floating-point evaluation");				
+				throw RunError("nonscalar matrix in integer evaluation");
 			}
-			
+
 			// Get the integer value of the scalar
 			int64 intVal = pMatrixObject->getScalar()? 1:0;
-			
+
 			// Return the integer value directly
 			return intVal;
 		}
 		break;
-		
+
 		// Unsupported typed
 		default:
 		{
@@ -365,73 +367,73 @@ int64 getInt64Value(const DataObject* pObject)
 Revisions and bug fixes:
 */
 float64 getFloat64Value(const DataObject* pObject)
-{	
+{
 	// Switch on the type of the object
 	switch (pObject->getType())
-	{	
+	{
 		// 64-bit float matrix
 		case DataObject::MATRIX_F64:
 		{
 			// Get a typed pointer to the matrix
 			const MatrixF64Obj* pMatrixObject = (MatrixF64Obj*)pObject;
-			
+
 			// If the matrix is not a scalar
 			if (!pMatrixObject->isScalar())
 			{
 				// Throw an exception
-				throw RunError("nonscalar matrix in floating-point evaluation");				
+				throw RunError("nonscalar matrix in floating-point evaluation");
 			}
-			
+
 			// Get the floating-point value of the scalar
 			float64 floatVal = pMatrixObject->getScalar();
-			
+
 			// Return the floating-point value directly
-			return floatVal;	
+			return floatVal;
 		}
 		break;
-		
+
 		// Character array
 		case DataObject::CHARARRAY:
 		{
 			// Get a typed pointer to the matrix
 			const CharArrayObj* pMatrixObject = (CharArrayObj*)pObject;
-			
+
 			// If the matrix is not a scalar
 			if (!pMatrixObject->isScalar())
 			{
 				// Throw an exception
-				throw RunError("nonscalar matrix in floating-point evaluation");				
+				throw RunError("nonscalar matrix in floating-point evaluation");
 			}
-			
+
 			// Get the floating-point value of the scalar
 			float64 floatVal = (float64)pMatrixObject->getScalar();
-			
+
 			// Return the floating-point value directly
 			return floatVal;
 		}
 		break;
-		
+
 		// Logical array
 		case DataObject::LOGICALARRAY:
 		{
 			// Get a typed pointer to the matrix
 			const LogicalArrayObj* pMatrixObject = (LogicalArrayObj*)pObject;
-			
+
 			// If the matrix is not a scalar
 			if (!pMatrixObject->isScalar())
 			{
 				// Throw an exception
-				throw RunError("nonscalar matrix in floating-point evaluation");				
+				throw RunError("nonscalar matrix in floating-point evaluation");
 			}
-			
+
 			// Get the floating-point value of the scalar
 			float64 floatVal = pMatrixObject->getScalar()? 1:0;
-			
+
 			// Return the floating-point value directly
 			return floatVal;
 		}
 		break;
-		
+
 		// Unsupported typed
 		default:
 		{
@@ -448,7 +450,7 @@ float64 getFloat64Value(const DataObject* pObject)
 Revisions and bug fixes:
 */
 size_t getIndexValue(const DataObject* pObject)
-{	
+{
 	// Switch on the type of the object
 	switch (pObject->getType())
 	{
@@ -457,22 +459,22 @@ size_t getIndexValue(const DataObject* pObject)
 		{
 			// Get a typed pointer to the matrix
 			const MatrixF64Obj* pMatrixObject = (MatrixF64Obj*)pObject;
-			
+
 			// If the matrix is not a scalar
 			if (!pMatrixObject->isScalar())
 			{
 				// Throw an exception
-				throw RunError("nonscalar matrix in integer evaluation");				
+				throw RunError("nonscalar matrix in integer evaluation");
 			}
-			
+
 			// Get the floating-point value of the scalar
 			float64 floatVal = pMatrixObject->getElem1D(1);
-			
+
 			// Get the integer and fractional parts of the value
 			float64 fracPart;
 			float64 intPart;
 			fracPart = modf(floatVal, &intPart);
-			
+
 			// If the floating-point part is nonzero
 			if (fracPart != 0)
 			{
@@ -488,10 +490,10 @@ size_t getIndexValue(const DataObject* pObject)
 			}
 
 			// Cast the value as a positive integer
-			return (size_t)intPart;		
+			return (size_t)intPart;
 		}
 		break;
-		
+
 		// Unsupported typed
 		default:
 		{
@@ -521,7 +523,7 @@ DataObject* createBlankObj(DataObject::Type type)
 		case DataObject::MATRIX_C128:
 		return new MatrixC128Obj();
 		break;
-		
+
 		// Logical array
 		case DataObject::LOGICALARRAY:
 		return new LogicalArrayObj();
@@ -531,12 +533,12 @@ DataObject* createBlankObj(DataObject::Type type)
 		case DataObject::CHARARRAY:
 		return new CharArrayObj();
 		break;
-		
+
 		// Cell array
 		case DataObject::CELLARRAY:
 		return new CellArrayObj();
 		break;
-		
+
 		// For all other object types
 		default:
 		{

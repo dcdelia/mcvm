@@ -1811,7 +1811,8 @@ namespace mcvm { namespace stdlib {
 	* Purpose : Evaluate functions by handle or name
 	* Initial : Maxime Chevalier-Boisvert on February 26, 2009
 	****************************************************************
-	Revisions and bug fixes:
+	Revisions and bug fixes: provisional support for function names
+        by Daniele Cono D'Elia, August 2015.
 	*/
 	ArrayObj* fevalFunc(ArrayObj* pArguments)
 	{
@@ -1819,17 +1820,7 @@ namespace mcvm { namespace stdlib {
 		if (pArguments->getSize() < 1)
 			throw RunError("insufficient argument count");
 
-		// If the first argument is not a function handle, throw an exception
-		if (pArguments->getObject(0)->getType() != DataObject::FN_HANDLE)
-			throw RunError("can only apply feval to function handles");
-
-		// Get a typed pointer to the function handle
-		FnHandleObj* pHandle = (FnHandleObj*)pArguments->getObject(0);
-
-		// Get a pointer to the function object
-		Function* pFunction = pHandle->getFunction();
-
-		// Create an array object for the function arguments
+                // Create an array object for the function arguments
 		ArrayObj* pFuncArgs = new ArrayObj(pArguments->getSize() - 1);
 
 		// For each remaining argument
@@ -1839,8 +1830,25 @@ namespace mcvm { namespace stdlib {
 			ArrayObj::addObject(pFuncArgs, pArguments->getObject(i));
 		}
 
-		// Call the function with the supplied arguments
-		return Interpreter::callFunction(pFunction, pFuncArgs);
+                DataObject::Type firstArgType = pArguments->getObject(0)->getType();
+		if (firstArgType == DataObject::FN_HANDLE) {
+                    // Get a typed pointer to the function handle
+                    FnHandleObj* pHandle = (FnHandleObj*)pArguments->getObject(0);
+
+                    // Get a pointer to the function object
+                    Function* pFunction = pHandle->getFunction();
+
+                    // Call the function with the supplied arguments
+                    return Interpreter::callFunction(pFunction, pFuncArgs);
+                } else if (firstArgType == DataObject::CHARARRAY) {
+                    // Get the function name from the object
+                    std::string funcName = ((CharArrayObj*)pArguments->getObject(0))->getString();
+
+                    // Fallback to the interpreter for symbol resolution
+                    return Interpreter::callByName(funcName, pFuncArgs);
+                } else {
+                    throw RunError("can only apply feval to function handles or names");
+                }
 	}
 
 	/***************************************************************
