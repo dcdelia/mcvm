@@ -2221,7 +2221,8 @@ TypeSetString inferTypes(
 * Purpose : Perform type inference for a function handle expr.
 * Initial : Maxime Chevalier-Boisvert on May 12, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: [check on pObject == NULL merged from
+commit bf1326@z3jiang] by Daniele Cono D'Elia, August 2015.
 */
 TypeSetString inferTypes(
 	const FnHandleExpr* pHandleExpr,
@@ -2245,9 +2246,10 @@ TypeSetString inferTypes(
 	const DataObject* pObject = Environment::lookup(pLocalEnv, pSymbol);
 
 	// If the object is not a function, return no information
-	if (pObject->getType() != DataObject::FUNCTION)
+	if (pObject == NULL || pObject->getType() != DataObject::FUNCTION) {
 		return TypeSetString();
-
+        }
+        
 	// Get a typed pointer to the function
 	Function* pFunction = (Function*)pObject;
 

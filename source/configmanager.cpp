@@ -54,7 +54,8 @@ std::string ConfigManager::s_fileName = "";
 * Purpose : Constructor for config variable class
 * Initial : Maxime Chevalier-Boisvert on February 4, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: [fix on assert merged from commit
+4a37c54@z3jiang] by Daniele Cono D'Elia, August 2015.
 */
 ConfigVar::ConfigVar(
 	const std::string& name,
@@ -84,7 +85,8 @@ ConfigVar::ConfigVar(
 	m_maxValue = maxVal;
 
 	// Ensure that we can set the initial default value
-	assert (setValue(defaultVal));
+        bool success = setValue(defaultVal);
+	assert (success);
 }
 
 /***************************************************************
@@ -262,7 +264,8 @@ bool ConfigManager::loadCfgFile(const std::string& filePath)
 * Purpose : Parse command-line arguments
 * Initial : Maxime Chevalier-Boisvert on February 4, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: [strip .m from file name merged from
+commit 7a17a4@z3jiang] by Daniele Cono D'Elia, August 2015.
 */
 bool ConfigManager::parseCmdArgs(int argCount, char** argVal)
 {
@@ -302,6 +305,12 @@ bool ConfigManager::parseCmdArgs(int argCount, char** argVal)
 	{
 		// Set the target file name
 		s_fileName = argVal[argCount - 1];
+
+                // Strip .m as the interpreter expects a function name
+                size_t len = s_fileName.length();
+		if (s_fileName[len-2] == '.' && s_fileName[len-1] == 'm') {
+                    s_fileName = s_fileName.substr(0, len-2);
+		}
 	}
 
 	// Nothing went wrong
