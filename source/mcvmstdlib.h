@@ -69,6 +69,9 @@ namespace mcvm { namespace stdlib {
 	// Library function used to obtain floating-point epsilon values
 	extern LibFunction eps;
 
+        // Library function used to display an error message and exit
+	extern LibFunction error;
+
 	// Library function used to determine the existence of an object
 	extern LibFunction exist;
 
@@ -162,6 +165,9 @@ namespace mcvm { namespace stdlib {
 	// Library function used to get the current working directory
 	extern LibFunction pwd;
 
+        // Library function used to quit the VM
+	extern LibFunction quit;
+
 	// Library function used to generate uniform random numbers
 	extern LibFunction rand;
 
@@ -218,6 +224,9 @@ namespace mcvm { namespace stdlib {
 
 	// Library function used to find unique elements in a matrix
 	extern LibFunction unique;
+
+        // Library function used to display warning messages
+	extern LibFunction warning;
 
 	// Library function used to create and initialize matrices
 	extern LibFunction zeros;

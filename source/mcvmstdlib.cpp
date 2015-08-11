@@ -37,6 +37,7 @@
 #include "utility.h"
 #include "process.h"
 #include "filesystem.h"
+#include "client.h"
 
 // Standard library name space
 namespace mcvm { namespace stdlib {
@@ -531,6 +532,25 @@ namespace mcvm { namespace stdlib {
 		// Return the matrix argument
 		return pMatrixArg;
 	}
+
+        /***************************************************************
+	* Function: shutdownVM()
+	* Purpose : Shut down the virtual machine
+	* Initial : Daniele Cono D'Elia on August 11, 2015
+	****************************************************************
+	Revisions and bug fixes:
+	*/
+        void shutdownVM(int code) {
+            // TODO provide a common interface for main.cpp
+
+            // Shut down the JIT compiler
+            JITCompiler::shutdown();
+
+            // Close the interface to Natlab
+            Client::shutdown();
+
+            exit(code);
+        }
 
 	/***************************************************************
 	* Function: absFunc()
@@ -1560,6 +1580,26 @@ namespace mcvm { namespace stdlib {
 		// Return the possible output types
 		return TypeSetString(1, outSet);
 	}
+
+        /***************************************************************
+	* Function: errorFunc()
+	* Purpose : Display an error message and shut down the VM
+	* Initial : Daniele Cono D'Elia on August 11, 2015
+	****************************************************************
+	Revisions and bug fixes:
+	*/
+        ArrayObj* errorFunc(ArrayObj* pArguments) {
+            	// Ensure there is exactly one argument
+		if (pArguments->getSize() != 1)
+			throw RunError("invalid argument count");
+
+		// Display the argument as a string
+		std::cerr << "[ERROR] " << pArguments->getObject(0)->toString() << std::endl;
+
+                // Process will exit with a generic error code 1
+                shutdownVM(1);
+		return nullptr;
+        }
 
 	/***************************************************************
 	* Function: evalFunc()
@@ -3194,6 +3234,20 @@ namespace mcvm { namespace stdlib {
 		return new ArrayObj(new MatrixF64Obj(PI));
 	}
 
+        /***************************************************************
+	* Function: quitFunc()
+	* Purpose : Shut down the VM
+	* Initial : Daniele Cono D'Elia on August 11, 2015
+	****************************************************************
+	Revisions and bug fixes:
+	*/
+	ArrayObj* quitFunc(ArrayObj* pArguments)
+	{
+                // close the process with success code 0
+                shutdownVM(0);
+                return nullptr;
+	}
+
 
 	/***************************************************************
 	* Function: pwdFunc()
@@ -4680,13 +4734,31 @@ namespace mcvm { namespace stdlib {
 		return TypeSetString(1, outSet);
 	}
 
+        /***************************************************************
+	* Function: warningFunc()
+	* Purpose : Display a warning message
+	* Initial : Daniele Cono D'Elia on August 11, 2015
+	****************************************************************
+	Revisions and bug fixes:
+	*/
+        ArrayObj* warningFunc(ArrayObj* pArguments) {
+            	// Ensure there is exactly one argument
+		if (pArguments->getSize() != 1)
+			throw RunError("invalid argument count");
+
+		// Display the argument as a string
+		std::cerr << "[WARNING] " << pArguments->getObject(0)->toString() << std::endl;
+
+		// Return nothing
+		return new ArrayObj();
+        }
+
 	/***************************************************************
 	* Function: zerosFunc()
 	* Purpose : Create and initialize a matrix
 	* Initial : Maxime Chevalier-Boisvert on January 29, 2009
 	****************************************************************
-	Revisions and bug fixes: added support for log by Daniele Cono
-        D'Elia, August 2015.
+	Revisions and bug fixes:
 	*/
 	ArrayObj* zerosFunc(ArrayObj* pArguments)
 	{
@@ -4709,6 +4781,7 @@ namespace mcvm { namespace stdlib {
 	LibFunction dot			("dot"		, dotFunc		, dotFuncTypeMapping			);
 	LibFunction eval		("eval"		, evalFunc		, nullTypeMapping				);
 	LibFunction eps			("eps"		, epsFunc		, realScalarTypeMapping			);
+        LibFunction error		("error"	, errorFunc		, nullTypeMapping				);
 	LibFunction exist		("exist"	, existFunc		, intScalarTypeMapping			);
 	LibFunction exp			("exp"		, expFunc		, unaryOpTypeMapping<false>		);
 	LibFunction eye			("eye"		, eyeFunc		, createF64MatTypeMapping		);
@@ -4724,7 +4797,7 @@ namespace mcvm { namespace stdlib {
 	LibFunction iscell		("iscell"	, iscellFunc	, boolScalarTypeMapping			);
 	LibFunction isempty		("isempty"	, isemptyFunc	, boolScalarTypeMapping			);
 	LibFunction isequal		("isequal"	, isequalFunc	, boolScalarTypeMapping			);
-	LibFunction isnumeric	("isnumeric", isnumericFunc	, boolScalarTypeMapping			);
+	LibFunction isnumeric           ("isnumeric"    , isnumericFunc	, boolScalarTypeMapping			);
 	LibFunction length		("length"	, lengthFunc	, intScalarTypeMapping			);
 	LibFunction load		("load"		, loadFunc		, loadFuncTypeMapping			);
 	LibFunction log                 ("log"		, logFunc		, unaryOpTypeMapping<false>		);
@@ -4735,11 +4808,12 @@ namespace mcvm { namespace stdlib {
 	LibFunction min			("min"		, minFunc		, maxFuncTypeMapping			);
 	LibFunction mod			("mod"		, modFunc		, arrayArithOpTypeMapping<false>);
 	LibFunction not_		("not"		, notFunc		, notFuncTypeMapping			);
-	LibFunction num2str		("num2str"	, num2strFunc	, stringValueTypeMapping		);
+	LibFunction num2str		("num2str"	, num2strFunc           , stringValueTypeMapping		);
 	LibFunction numel		("numel"	, numelFunc		, intScalarTypeMapping			);
 	LibFunction ones		("ones"		, onesFunc		, createF64MatTypeMapping		);
 	LibFunction pi			("pi"		, piFunc		, realScalarTypeMapping			);
 	LibFunction pwd			("pwd"		, pwdFunc		, stringValueTypeMapping		);
+        LibFunction quit		("quit"		, quitFunc		, nullTypeMapping			);
 	LibFunction rand		("rand"		, randFunc		, createF64MatTypeMapping		);
 	LibFunction reshape		("reshape"	, reshapeFunc	, reshapeFuncTypeMapping		);
 	LibFunction round		("round"	, roundFunc		, intUnaryOpTypeMapping			);
@@ -4759,6 +4833,7 @@ namespace mcvm { namespace stdlib {
 	LibFunction toeplitz	("toeplitz"	, toeplitzFunc	, toeplitzFuncTypeMapping		);
 	LibFunction true_		("true"		, trueFunc		, createLogArrTypeMapping		);
 	LibFunction unique		("unique"	, uniqueFunc	, uniqueFuncTypeMapping			);
+        LibFunction warning		("warning"	, warningFunc	, stringValueTypeMapping		);
 	LibFunction zeros		("zeros"	, zerosFunc		, createF64MatTypeMapping		);
 
 	/***************************************************************
@@ -4784,8 +4859,9 @@ namespace mcvm { namespace stdlib {
 		Interpreter::setBinding(diag.getFuncName()		, (DataObject*)&diag		);
 		Interpreter::setBinding(disp.getFuncName()		, (DataObject*)&disp		);
 		Interpreter::setBinding(dot.getFuncName()		, (DataObject*)&dot			);
-		Interpreter::setBinding(eval.getFuncName()		, (DataObject*)&eval		);
 		Interpreter::setBinding(eps.getFuncName()		, (DataObject*)&eps			);
+                Interpreter::setBinding(error.getFuncName()		, (DataObject*)&disp		);
+                Interpreter::setBinding(eval.getFuncName()		, (DataObject*)&eval		);
 		Interpreter::setBinding(exist.getFuncName()		, (DataObject*)&exist		);
 		Interpreter::setBinding(exp.getFuncName()		, (DataObject*)&exp			);
 		Interpreter::setBinding(eye.getFuncName()		, (DataObject*)&eye			);
@@ -4817,6 +4893,7 @@ namespace mcvm { namespace stdlib {
 		Interpreter::setBinding(ones.getFuncName()		, (DataObject*)&ones		);
 		Interpreter::setBinding(pi.getFuncName()		, (DataObject*)&pi			);
 		Interpreter::setBinding(pwd.getFuncName()		, (DataObject*)&pwd			);
+                Interpreter::setBinding(quit.getFuncName()		, (DataObject*)&quit			);
 		Interpreter::setBinding(rand.getFuncName()		, (DataObject*)&rand		);
 		Interpreter::setBinding(reshape.getFuncName()	, (DataObject*)&reshape		);
 		Interpreter::setBinding(round.getFuncName()		, (DataObject*)&round		);
@@ -4836,6 +4913,7 @@ namespace mcvm { namespace stdlib {
 		Interpreter::setBinding(toeplitz.getFuncName()	, (DataObject*)&toeplitz	);
 		Interpreter::setBinding(true_.getFuncName()		, (DataObject*)&true_		);
 		Interpreter::setBinding(unique.getFuncName()	, (DataObject*)&unique		);
+                Interpreter::setBinding(warning.getFuncName()	, (DataObject*)&warning		);
 		Interpreter::setBinding(zeros.getFuncName()		, (DataObject*)&zeros		);
 
 		// Declare a type set for a float64 scalar type
