@@ -1079,7 +1079,8 @@ ArrayObj* Interpreter::evalIndexArgs(const Expression::ExprVector& argVector, En
 * Purpose : Evaluate an expression statement
 * Initial : Maxime Chevalier-Boisvert on February 19, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: removed std::endl after "ans =" by
+Daniele Cono D'Elia on August 2015.
 */
 void Interpreter::evalExprStmt(const ExprStmt* pStmt, Environment* pEnv)
 {
@@ -1131,7 +1132,7 @@ void Interpreter::evalExprStmt(const ExprStmt* pStmt, Environment* pEnv)
 	}
 
 	// Display "ans =" to indicate that we will output the result
-	std::cout << "ans = "  << std::endl;
+	std::cout << "ans = ";
 
 	// Display the expression evaluation result
 	std::cout << pResult->toString() << std::endl;

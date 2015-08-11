@@ -20,6 +20,7 @@
 // Header files
 #include <cassert>
 #include <iostream>
+#include <sstream>
 #include <llvm/Analysis/Passes.h>
 #include <llvm/IR/Module.h>
 #include <llvm/PassManager.h>
@@ -6345,12 +6346,47 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 	);
 }
 
+/* When in JIT mode, McVM is unable to call a function without
+ * supplying all the required arguments and this would result
+ * in an assertion failure (e.g. it cannot find the type set
+ * for an expression in arrayExprFallbck) or, accordingly to
+ * commit fed8cc@z3jiang, a random segfault. This method can
+ * be used to check whether all declared args are supplied.
+ *
+ * Initial: Sam J's commit to z3jiang on March 9, 2013.
+*/
+void checkDeclaredAndSuppliedFuncCallArgs(
+    const Expression::ExprVector& actualArgs, Function* calledFunction)
+{
+    size_t expectedParams = -1;
+
+    if (dynamic_cast<ProgFunction*>(calledFunction) != NULL) {
+        expectedParams = ((ProgFunction*)calledFunction)->getInParams().size();
+    } else if (dynamic_cast<LibFunction*>(calledFunction) != NULL) {
+        expectedParams = actualArgs.size();
+        // TODO where are the expected args stored? for now, just let it pass
+    } else {
+    std::cerr << "BUG: unexpected function type" << std::endl;
+    expectedParams = -1;
+    }
+
+    if (actualArgs.size() != expectedParams) {
+        std::stringstream ss;
+        ss << "Optional function args not supported: caller must supply all callee declared args" << std::endl;
+        ss << "Called function: " << calledFunction->getFuncName() << std::endl;
+        ss << " Declared: " << actualArgs.size() << std::endl;
+        ss << " Supplied: " << expectedParams << std::endl;
+        throw std::runtime_error(ss.str());
+    }
+}
+
 /***************************************************************
 * Function: JITCompiler::compFunctionCall()
 * Purpose : Compile a function call
 * Initial : Maxime Chevalier-Boisvert on June 15, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: [check on supplied arguments merged
+from fed8cc@z3jiang] by Daniele Cono D'Elia, August 2015.
 */
 JITCompiler::ValueVector JITCompiler::compFunctionCall(Function* pCalleeFunc,
 	const Expression::ExprVector& arguments, size_t nargout, Expression* pOrigExpr,
@@ -6358,7 +6394,10 @@ JITCompiler::ValueVector JITCompiler::compFunctionCall(Function* pCalleeFunc,
 	const Expression::SymbolSet& liveVars, const VarDefMap& reachDefs, const VarTypeMap& varTypes,
 	VariableMap& varMap, llvm::BasicBlock* pEntryBlock, llvm::BasicBlock* pExitBlock)
 {
-	// Add the callee function to the callee set
+        // All declared arguments must be supplied (see method)
+        checkDeclaredAndSuppliedFuncCallArgs(arguments, pCalleeFunc);
+
+        // Add the callee function to the callee set
 	callerFunction.callees.insert(pCalleeFunc);
 
 	// Declare a set for the variables to be written to the local environment
