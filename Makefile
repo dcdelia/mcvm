@@ -20,7 +20,7 @@ _OBJS = analysis_arraycopy.o analysis_boundscheck.o analysis_copyplacement.o ana
 		interpreter.o jitcompiler.o lambdaexpr.o loopstmts.o main.o matrixexpr.o matrixobjs.o matrixops.o objects.o \
 		paramexpr.o parser.o plotting.o process.o profiling.o rangeexpr.o rangeobj.o runtimebase.o mcvmstdlib.o stmtsequence.o \
 		switchstmt.o symbolexpr.o transform_endexpr.o transform_logic.o transform_loops.o transform_split.o transform_switch.o \
-		typeinfer.o unaryopexpr.o utility.o xml.o mcjithelper.o
+		typeinfer.o unaryopexpr.o utility.o xml.o mcjithelper.o analysis_feval.o
 OBJS = $(patsubst %,$(OBJDIR)/%,$(_OBJS))
 
 all: $(OUT)

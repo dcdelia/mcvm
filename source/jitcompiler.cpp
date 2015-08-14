@@ -49,6 +49,7 @@
 #include "matrixops.h"
 #include "transform_logic.h"
 #include "transform_split.h"
+#include "analysis_feval.h"
 
 
 /***************************************************************
@@ -1026,6 +1027,10 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 
 	compVersion.pBoundsCheckInfo = (const BoundsCheckInfo*)AnalysisManager::requestInfo(&computeBoundsCheck,
 		pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
+
+        /* DCD: HERE provisional code for feval optimization*/
+        const FevalInfo* pFevalInfo = (const FevalInfo*)AnalysisManager::requestInfo(&computeFevalInfo,
+                pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
 
 	if (s_jitCopyEnableVar)
 	{

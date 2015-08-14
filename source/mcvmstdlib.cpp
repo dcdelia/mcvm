@@ -4411,6 +4411,8 @@ namespace mcvm { namespace stdlib {
 		// Compute the time difference
 		double deltaT = timeSecs - ticTocStartTime;
 
+                std::cerr << "DEBUG: deltaT is " << deltaT << std::endl;
+
 		// Return the time difference value
 		return new ArrayObj(new MatrixF64Obj(deltaT));
 	}

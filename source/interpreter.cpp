@@ -830,7 +830,8 @@ void Interpreter::evalAssignStmt(const AssignStmt* pStmt, Environment* pEnv)
 * Purpose : Perform the assignment of an object to an expression
 * Initial : Maxime Chevalier-Boisvert on February 1, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: remove std::endl from printed output
+(was "var = \nvalue") by Daniele Cono D'Elia, August 2015.
 */
 void Interpreter::assignObject(const Expression* pLeftExpr, DataObject* pRightObject, Environment* pEnv, bool output)
 {
@@ -1026,7 +1027,7 @@ void Interpreter::assignObject(const Expression* pLeftExpr, DataObject* pRightOb
 	if (output)
 	{
 		// Display the symbol name and an equal sign
-		std::cout << pSymExpr->toString() << " = "  << std::endl;
+		std::cout << pSymExpr->toString() << " = ";
 
 		// Display the value bound to the symbol
 		std::cout << Environment::lookup(pEnv, pSymExpr)->toString() << std::endl;
