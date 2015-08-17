@@ -3245,7 +3245,9 @@ namespace mcvm { namespace stdlib {
 	{
                 // close the process with success code 0
                 shutdownVM(0);
-                return nullptr;
+
+                // return nothing
+                return new ArrayObj();
 	}
 
 

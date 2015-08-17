@@ -70,6 +70,9 @@ ConfigVar JITCompiler::s_jitEnableVar("jit_enable", ConfigVar::BOOL, "true"); /*
 // Config variable to enable/disable array deep copy
 ConfigVar JITCompiler::s_jitCopyEnableVar("jit_copy_enable", ConfigVar::BOOL, "false");
 
+// Config variable for enable optimization of feval instructions
+ConfigVar JITCompiler::s_jitFevalOptVar("jit_feval_opt", ConfigVar::BOOL, "true");
+
 // Config variable to enable/disable on-stack replacement capability
 ConfigVar JITCompiler::s_jitOsrEnableVar("jit_osr_enable", ConfigVar::BOOL, "false");
 ConfigVar JITCompiler::s_jitOsrStrategyVar("jit_osr_strategy", ConfigVar::STRING, "any");
@@ -247,8 +250,8 @@ std::string CompError::toString() const
 * Purpose : Initialize the JIT compiler
 * Initial : Maxime Chevalier-Boisvert on March 9, 2009
 ****************************************************************
-Revisions and bug fixes: Integration with MCJIT by Daniele Cono
-D'Elia, August 2015.
+Revisions and bug fixes: Integration with MCJIT and support for
+novel feval optimization by Daniele Cono D'Elia, August 2015.
 */
 void JITCompiler::initialize()
 {
@@ -538,6 +541,7 @@ void JITCompiler::initialize()
 	ConfigManager::registerVar(&s_jitNoReadBoundChecks);
 	ConfigManager::registerVar(&s_jitNoWriteBoundChecks);
 	ConfigManager::registerVar(&s_jitCopyEnableVar);
+        ConfigManager::registerVar(&s_jitFevalOptVar);
 
         ConfigManager::registerVar(&s_jitOsrEnableVar);
         ConfigManager::registerVar(&s_jitOsrStrategyVar);
@@ -1028,9 +1032,10 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 	compVersion.pBoundsCheckInfo = (const BoundsCheckInfo*)AnalysisManager::requestInfo(&computeBoundsCheck,
 		pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
 
-        /* DCD: HERE provisional code for feval optimization*/
-        const FevalInfo* pFevalInfo = (const FevalInfo*)AnalysisManager::requestInfo(&computeFevalInfo,
+        if (s_jitFevalOptVar) {
+            compVersion.pFevalInfo = (const FevalInfo*)AnalysisManager::requestInfo(&computeFevalInfo,
                 pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
+        }
 
 	if (s_jitCopyEnableVar)
 	{

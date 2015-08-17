@@ -49,6 +49,7 @@
 #include "analysis_metrics.h"
 #include "analysis_boundscheck.h"
 #include "analysis_copyplacement.h"
+#include "analysis_feval.h"
 #include "mcjithelper.hpp"
 
 /***************************************************************
@@ -89,7 +90,8 @@ private:
 * Purpose : Compile IIR code into binary executable form
 * Initial : Maxime Chevalier-Boisvert on March 4, 2009
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: added fields for feval optimization by
+Daniele Cono D'Elia, August 2015.
 */
 class JITCompiler
 {
@@ -164,6 +166,9 @@ public:
 
 	// Config variable for enabling or disabling copy optimizations
 	static ConfigVar s_jitCopyEnableVar;
+
+        // Config variable for enable optimization of feval instructions
+        static ConfigVar s_jitFevalOptVar;
 
     // Config variables to enable/disable on-stack replacement
     static ConfigVar s_jitOsrEnableVar;
@@ -291,6 +296,9 @@ private:
 
 		// Array copy analysis Information
 		const ArrayCopyAnalysisInfo* pArrayCopyInfo;
+
+                // Feval analysis information
+                const FevalInfo* pFevalInfo;
 
 		// Input argument storage modes and object types
 		LLVMTypeVector inArgStoreModes;

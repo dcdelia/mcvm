@@ -8,13 +8,33 @@
 #define	ANALYSIS_FEVAL_H
 
 #include "analysismanager.h"
+#include "analysis_reachdefs.h"
 #include "functions.h"
 #include "stmtsequence.h"
 #include "typeinfer.h"
 
+#include <vector>
+#include <map>
+
 class FevalInfo : public AnalysisInfo {
     public:
-        // no fields declared yet
+        typedef struct FevalCallInfo {
+            Statement* stmt;
+            int loopIdx;
+            IIRNode* parent;
+            Expression* firstArg;
+            VarDefMap* reachDefs;
+        } FevalCallInfo;
+
+        typedef std::vector<FevalCallInfo*> FevalCallsVec;
+        typedef std::map<SymbolExpr*, std::vector<FevalCallInfo*>> SymToStatementsMap;
+
+        FevalCallsVec FevalCalls;
+        SymToStatementsMap ConstantFirstArg;
+        bool containsFevalInstructions = false;
+
+        bool shouldOptimize() { return !ConstantFirstArg.empty(); }
+        void printResults();
 };
 
 AnalysisInfo* computeFevalInfo(
@@ -24,5 +44,5 @@ AnalysisInfo* computeFevalInfo(
 	bool returnBottom
 );
 
-#endif	/* ANALYSIS_FEVAL_H */
+#endif
 
