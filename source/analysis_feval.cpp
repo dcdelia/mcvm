@@ -12,6 +12,10 @@
 #include "assignstmt.h"
 #include "ifelsestmt.h"
 #include "loopstmts.h"
+#include "configmanager.h"
+
+#include <map>
+#include <utility>
 
 void parseStatementForFevalCalls(Statement* stmt, Statement* parentStmt, FevalInfo* analysisInfo, int loop_depth) {
     switch (stmt->getStmtType()) {
@@ -87,19 +91,28 @@ void parseStatementForFevalCalls(Statement* stmt, Statement* parentStmt, FevalIn
         }
 }
 
+std::map<FevalInfo::FunMapKey, FevalInfo*> FevalInfo::FevalInfoMap;
+
 AnalysisInfo* computeFevalInfo(
 	const ProgFunction* pFunction,
 	const StmtSequence* pFuncBody,
 	const TypeSetString& inArgTypes,
 	bool returnBottom
 ) {
-    // Create a reaching definition info object
-    FevalInfo* pFevalInfo = new FevalInfo();
-
     // If we should return bottom, return no information
     if (returnBottom) {
-        return pFevalInfo;
+        return new FevalInfo;
     }
+
+    FevalInfo::FunMapKey key(pFunction, pFuncBody);
+
+    std::map<FevalInfo::FunMapKey, FevalInfo*>::iterator it = FevalInfo::FevalInfoMap.find(key);
+    if (it != FevalInfo::FevalInfoMap.end()) {
+        return it->second;
+    }
+
+    FevalInfo* pFevalInfo = new FevalInfo();
+    FevalInfo::FevalInfoMap.insert(std::pair<FevalInfo::FunMapKey, FevalInfo*>(key, pFevalInfo));
 
     //std::cerr << "--> feval Analysis <--" << std::endl;
 
@@ -147,7 +160,8 @@ AnalysisInfo* computeFevalInfo(
 
         const VarDefMap& reachDefs = defItr->second;
 
-        if (callInfo->firstArg->getExprType() == Expression::SYMBOL) {
+        Expression::ExprType exprType = callInfo->firstArg->getExprType();
+        if (exprType == Expression::SYMBOL) {
             SymbolExpr *symExpr = (SymbolExpr*)callInfo->firstArg;
             //std::cerr << "Symbol is: " << symExpr->toString() << " (" << (void*)symExpr << ")" << std::endl;
             VarDefMap::const_iterator symDefItr = reachDefs.find(symExpr);
@@ -182,11 +196,21 @@ AnalysisInfo* computeFevalInfo(
                 }
             }
 
-            std::cerr << "Sorry, I don't know how to optimize this feval call yet!" << std::endl;
+            std::cerr << "Sorry, I don't know how to optimize this feval call yet! --> ";
             std::cerr << callInfo->stmt->toString() << std::endl;
         } else {
-            std::cerr << "I found an Expression of unexpected type while I was looking for a SymbolExpr!!!!" << std::endl;
-            assert(false);
+            if (exprType == Expression::STR_CONST) {
+                if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
+                    std::cerr << "Ignoring this feval call as its first argument is a constant string! --> ";
+                    std::cerr << callInfo->stmt->toString() << std::endl;
+                }
+            } else if (exprType == Expression::FN_HANDLE) {
+                std::cerr << "Sorry, I don't know how to treat function handles yet! --> ";
+                std::cerr << callInfo->stmt->toString() << std::endl;
+            } else {
+                std::cerr << "Found an Expression of unexpected type " << exprType << " when analyzing a feval!!!!" << std::endl;
+                assert(false);
+            }
         }
     }
 
@@ -200,21 +224,19 @@ AnalysisInfo* computeFevalInfo(
         if (!inLoop) {
             pFevalInfo->ConstantFirstArg.erase(it++);
         } else {
-            it++;
+            for (FevalInfo::FevalCallInfo* callInfo: it->second) {
+                AssignStmt* pAssignStmt = (AssignStmt*)callInfo->stmt;
+                pFevalInfo->ParamExpressions.insert((ParamExpr*)pAssignStmt->getRightExpr());
+            }
+            ++it;
         }
-    }
-
-
-    if (!pFevalInfo->ConstantFirstArg.empty()) {
-
-
     }
 
     return pFevalInfo;
 }
 
 void FevalInfo::printResults() {
-    if (this->shouldOptimize()) {
+    if (this->toOptimize()) {
         std::cerr << "=============================" << std::endl;
         std::cerr << "Feval statements to optimize:" << std::endl;
 

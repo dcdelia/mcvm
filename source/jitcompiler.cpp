@@ -164,6 +164,7 @@ Revisions and bug fixes:
 llvm::FunctionPassManager* JITCompiler::generateFPM(llvm::Module* M) {
     llvm::FunctionPassManager* FPM = new llvm::FunctionPassManager(M);
 
+    //if (!s_jitFevalOptVar) {
     FPM->add(llvm::createVerifierPass()); /* DCD: argument was llvm::PrintMessageAction */
     FPM->add(llvm::createCFGSimplificationPass());
     FPM->add(llvm::createPromoteMemoryToRegisterPass());
@@ -175,6 +176,7 @@ llvm::FunctionPassManager* JITCompiler::generateFPM(llvm::Module* M) {
     FPM->add(llvm::createInstructionCombiningPass());
     // FPM->add(llvm::createBlockPlacementPass());/* DCD: removed from LLVM as MachineBlockPlacement supercedes it */
     FPM->add(llvm::createCFGSimplificationPass());
+    //}
     if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
         FPM->add(llvm::createPrintFunctionPass(*&llvm::outs(), ""));
     }
@@ -6139,6 +6141,10 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 	// Get a reference to the argument vector
 	const ParamExpr::ExprVector& arguments = pParamExpr->getArguments();
 
+        FevalInfo* fevalInfo = const_cast<FevalInfo*>(version.pFevalInfo);
+        bool trackFevalCall = s_jitFevalOptVar && fevalInfo->containsFevalInstructions
+                && (pSymbol->getSymName() == "feval") && fevalInfo->toTrack(const_cast<ParamExpr*>(pParamExpr));
+
 	// Lookup the symbol in the reaching definitions
 	VarDefMap::const_iterator symDefItr = reachDefs.find(pSymbol);
 	assert (symDefItr != reachDefs.end());
@@ -6166,7 +6172,24 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 		// If the object is a function
 		if (pObject != NULL && pObject->getType() == DataObject::FUNCTION)
 		{
-			// Compile the function call
+                        // feval optimization
+                        if (trackFevalCall) {
+                            return compAndTrackFeval((Function*)pObject,
+				pParamExpr->getArguments(),
+				nargout,
+				pParamExpr,
+				(void*)Interpreter::evalParamExpr,
+				function,
+				version,
+				liveVars,
+				reachDefs,
+				varTypes,
+				varMap,
+				pEntryBlock,
+				pExitBlock);
+                        }
+
+                        // Compile the function call
 			return compFunctionCall(
 				(Function*)pObject,
 				pParamExpr->getArguments(),
@@ -6391,6 +6414,166 @@ void checkDeclaredAndSuppliedFuncCallArgs(
 }
 
 /***************************************************************
+* Function: JITCompiler::compAndTrackFeval()
+* Purpose : Compile and track a feval call
+* Initial : Daniele Cono D'Elia on August 18, 2015
+****************************************************************
+Revisions and bug fixes:
+*/
+JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
+	const Expression::ExprVector& arguments, size_t nargout, Expression* pOrigExpr,
+	void* pFallbackFunc, CompFunction& callerFunction, CompVersion& callerVersion,
+	const Expression::SymbolSet& liveVars, const VarDefMap& reachDefs, const VarTypeMap& varTypes,
+	VariableMap& varMap, llvm::BasicBlock* pEntryBlock, llvm::BasicBlock* pExitBlock) {
+
+    // All declared arguments must be supplied (see method)
+    checkDeclaredAndSuppliedFuncCallArgs(arguments, pCalleeFunc);
+
+    // Add the callee function to the callee set
+    callerFunction.callees.insert(pCalleeFunc);
+
+    // Declare a set for the variables to be written to the local environment
+    Expression::SymbolSet writeSet;
+
+    assert(callerFunction.pProgFunc->getParent() == NULL); // fallback code thing
+
+    // Declare a type set string for the input argument types
+    TypeSetString inArgTypes;
+
+    // For each input argument
+    for (size_t i = 0; i < arguments.size(); ++i) {
+	// Get a pointer to this argument expression
+	Expression* pArgExpr = arguments[i];
+
+	// Declare a type set for the possible expression types
+	TypeSet exprTypes;
+
+	// If the expression is a symbol
+	if (pArgExpr->getExprType() == Expression::SYMBOL) {
+            // Get the type set associated with the symbol
+            VarTypeMap::const_iterator typeItr = varTypes.find((SymbolExpr*)pArgExpr);
+            exprTypes = (typeItr != varTypes.end())? typeItr->second:TypeSet();
+
+            // Add the expression types to the type set string
+            inArgTypes.push_back(exprTypes);
+	} else {
+            // Get the type set associated with the expression
+            ExprTypeMap::const_iterator typeItr = callerVersion.pTypeInferInfo->exprTypeMap.find(pArgExpr);
+            assert (typeItr != callerVersion.pTypeInferInfo->exprTypeMap.end());
+
+            // Add the type sets to the input argument types
+            inArgTypes.insert(inArgTypes.end(), typeItr->second.begin(), typeItr->second.end());
+	}
+    }
+
+    assert(pCalleeFunc->isProgFunction() == false);
+
+    std::cerr << "Compiling and tracking a feval instruction..." << std::endl;
+
+    // Create an IR builder for the current basic block
+    llvm::IRBuilder<> currentBuilder(pEntryBlock);
+
+    // Create an array object to store the input arguments
+    llvm::Value* pInArray = createNativeCall(
+	currentBuilder,
+        (void*)ArrayObj::create,
+        LLVMValueVector(1,llvm::ConstantInt::get(getIntType(sizeof(size_t)),arguments.size())));
+
+    // For each argument
+    for (ParamExpr::ExprVector::const_iterator argItr = arguments.begin(); argItr != arguments.end(); ++argItr) {
+	// Get a pointer to the argument expression
+	Expression* pArgExpr = *argItr;
+
+        // If this is a cell indexing expression
+	if (pArgExpr->getExprType() == Expression::CELL_INDEX) {
+            // Write the symbols used by the expression to the environment
+            writeVariables(currentBuilder, callerFunction, callerVersion, varMap, pArgExpr->getSymbolUses());
+
+            // Create a native call to evaluate the expresssion
+            LLVMValueVector evalArgs;
+            evalArgs.push_back(createPtrConst(pArgExpr));
+            evalArgs.push_back(getCallEnv(callerFunction, callerVersion));
+
+            llvm::Value* pArgValue = createNativeCall(currentBuilder, (void*)Interpreter::evalCellIndexExpr, evalArgs);
+
+            // Append the argument value to the input array object
+            LLVMValueVector appendArgs;
+            appendArgs.push_back(pInArray);
+            appendArgs.push_back(pArgValue);
+
+            createNativeCall(currentBuilder, (void*)ArrayObj::append, appendArgs);
+	} else {
+            // Create basic blocks for the expression compilation
+            llvm::BasicBlock* pEntryBlock = llvm::BasicBlock::Create(*s_Context, "", callerVersion.pLLVMFunc);
+            llvm::BasicBlock* pExitBlock = llvm::BasicBlock::Create(*s_Context, "", callerVersion.pLLVMFunc);
+
+            // Compile the expression to get the argument value
+            Value argValue = compExpression(pArgExpr, callerFunction, callerVersion, liveVars,
+                                            reachDefs, varTypes, varMap, pEntryBlock, pExitBlock);
+
+            // Jump to the entry block
+            currentBuilder.CreateBr(pEntryBlock);
+
+            // Update the current IR builder
+            currentBuilder.SetInsertPoint(pExitBlock);
+
+            // Store the argument as an object pointer
+            llvm::Value* pArgObj = changeStorageMode(currentBuilder, argValue.pValue, argValue.objType, VOID_PTR_TYPE);
+
+            // Add the argument value to the input array object
+            LLVMValueVector addArgs;
+            addArgs.push_back(pInArray);
+            addArgs.push_back(pArgObj);
+
+            createNativeCall(currentBuilder, (void*)ArrayObj::addObject, addArgs);
+	}
+    }
+
+    // Create an integer constant for the output argument count
+    llvm::Value* pOutArgCount = llvm::ConstantInt::get(getIntType(sizeof(size_t)), nargout);
+
+    // Perform the function call
+    LLVMValueVector callArgs;
+    callArgs.push_back(createPtrConst(pCalleeFunc));
+    callArgs.push_back(pInArray);
+    callArgs.push_back(pOutArgCount);
+
+    llvm::Value* pOutArray = createNativeCall(currentBuilder, (void*)Interpreter::callFunction, callArgs);
+
+    // Find the type set for this expression
+    ExprTypeMap::const_iterator typeItr = callerVersion.pTypeInferInfo->exprTypeMap.find(pOrigExpr);
+    assert (typeItr != callerVersion.pTypeInferInfo->exprTypeMap.end());
+    const TypeSetString& exprTypes = typeItr->second;
+
+    // Create vectors for the storage modes and object types of the output values
+    LLVMTypeVector storeModes(nargout, VOID_PTR_TYPE);
+    std::vector<DataObject::Type> objTypes(nargout, DataObject::UNKNOWN);
+
+    // If type information about the values is available
+    if (exprTypes.size() >= nargout) {
+	// For each value
+	for (size_t i = 0; i < nargout; ++i) {
+            // Get the optimal storage mode for the value
+            storeModes[i] = getStorageMode(exprTypes[i], objTypes[i]);
+	}
+    }
+
+    // Extract the output values from the array object
+    return getArrayValues(
+            pOutArray,
+            nargout,
+            true,
+            "insufficient number of return values",
+            pOrigExpr,
+            storeModes,
+            objTypes,
+            callerVersion.pLLVMFunc,
+            currentBuilder.GetInsertBlock(),
+            pExitBlock
+    );
+}
+
+/***************************************************************
 * Function: JITCompiler::compFunctionCall()
 * Purpose : Compile a function call
 * Initial : Maxime Chevalier-Boisvert on June 15, 2009
@@ -6590,6 +6773,7 @@ JITCompiler::ValueVector JITCompiler::compFunctionCall(Function* pCalleeFunc,
 			return ValueVector(1, retVal);
 		}
 	}
+
 
 	// If the function is a library function, or it should not be JIT compiled,
 	// or the argument count is not fixed, or direct calls should not be used

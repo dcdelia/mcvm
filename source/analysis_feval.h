@@ -12,9 +12,12 @@
 #include "functions.h"
 #include "stmtsequence.h"
 #include "typeinfer.h"
+#include "paramexpr.h"
 
-#include <vector>
 #include <map>
+#include <set>
+#include <utility>
+#include <vector>
 
 class FevalInfo : public AnalysisInfo {
     public:
@@ -32,9 +35,19 @@ class FevalInfo : public AnalysisInfo {
         FevalCallsVec FevalCalls;
         SymToStatementsMap ConstantFirstArg;
         bool containsFevalInstructions = false;
+        std::set<ParamExpr*> ParamExpressions;
 
-        bool shouldOptimize() { return !ConstantFirstArg.empty(); }
+        bool toOptimize() { return !ConstantFirstArg.empty(); }
+        bool toTrack(ParamExpr* pExpr) {
+            return ParamExpressions.find(pExpr) != ParamExpressions.end();
+        }
         void printResults();
+
+        typedef std::pair<const ProgFunction*, const StmtSequence*> FunMapKey;
+
+        static std::map<FunMapKey, FevalInfo*> FevalInfoMap;
+
+
 };
 
 AnalysisInfo* computeFevalInfo(
