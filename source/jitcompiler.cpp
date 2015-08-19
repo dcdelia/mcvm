@@ -50,6 +50,7 @@
 #include "transform_logic.h"
 #include "transform_split.h"
 #include "analysis_feval.h"
+#include "osr_feval.h"
 
 
 /***************************************************************
@@ -1207,8 +1208,26 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 	//       to the entry block during compilation, see getCallEnv for details.
 	entryBuilder.CreateBr(pSeqBlock);
 
-        // Run the optimization passes on the function
-        runFPM(pFuncObj);
+        if (s_jitFevalOptVar) {
+            OSRFeval::CompPair funPair(&compFunction, &compVersion);
+            OSRFeval::CompPairToOSRInfoMap::iterator cpIt = OSRFeval::CompOSRInfoMap.find(funPair);
+            if (cpIt != OSRFeval::CompOSRInfoMap.end()) {
+                std::cerr << "Current function contains annotated feval instructions!" << std::endl;
+                for (OSRFeval::FevalInfoForOSR *info: cpIt->second) {
+                    info->dump();
+                }
+
+                std::cerr << "OSR points should be inserted at these instructions:" << std::endl;
+                for (ParamExpr* loc: OSRFeval::getLocationsForOSRPoints(&compFunction, &compVersion)) {
+                    std::cerr << loc->toString() << std::endl;
+                }
+            } else {
+                runFPM(pFuncObj); // optimizations disrupt stored values... TODO!
+            }
+        } else {
+            // Run the optimization passes on the function
+            runFPM(pFuncObj);
+        }
 
         const std::string compiledFunctionName = pFuncObj->getName().str();
 
@@ -6142,8 +6161,8 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 	const ParamExpr::ExprVector& arguments = pParamExpr->getArguments();
 
         FevalInfo* fevalInfo = const_cast<FevalInfo*>(version.pFevalInfo);
-        bool trackFevalCall = s_jitFevalOptVar && fevalInfo->containsFevalInstructions
-                && (pSymbol->getSymName() == "feval") && fevalInfo->toTrack(const_cast<ParamExpr*>(pParamExpr));
+        bool trackFevalCall = s_jitFevalOptVar && (pSymbol->getSymName() == "feval")
+                                && fevalInfo->toTrack(const_cast<ParamExpr*>(pParamExpr));
 
 	// Lookup the symbol in the reaching definitions
 	VarDefMap::const_iterator symDefItr = reachDefs.find(pSymbol);
@@ -6429,6 +6448,10 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
     // All declared arguments must be supplied (see method)
     checkDeclaredAndSuppliedFuncCallArgs(arguments, pCalleeFunc);
 
+    // Generate FevalInfoForOSR object
+    OSRFeval::FevalInfoForOSR *infoForOSR = OSRFeval::createFevalInfoForOSR(&callerFunction, &callerVersion);
+    infoForOSR->pParamExpr = (ParamExpr*)pOrigExpr;
+
     // Add the callee function to the callee set
     callerFunction.callees.insert(pCalleeFunc);
 
@@ -6474,10 +6497,12 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
     llvm::IRBuilder<> currentBuilder(pEntryBlock);
 
     // Create an array object to store the input arguments
-    llvm::Value* pInArray = createNativeCall(
-	currentBuilder,
-        (void*)ArrayObj::create,
-        LLVMValueVector(1,llvm::ConstantInt::get(getIntType(sizeof(size_t)),arguments.size())));
+    llvm::Value* pInArray = createNativeCall(currentBuilder,
+                                (void*)ArrayObj::create,
+                                LLVMValueVector(1,llvm::ConstantInt::get(getIntType(sizeof(size_t)),arguments.size())));
+
+    // Store value for OSR purposes
+    infoForOSR->arrayObjCreateInst = pInArray;
 
     // For each argument
     for (ParamExpr::ExprVector::const_iterator argItr = arguments.begin(); argItr != arguments.end(); ++argItr) {
@@ -6501,7 +6526,10 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
             appendArgs.push_back(pInArray);
             appendArgs.push_back(pArgValue);
 
-            createNativeCall(currentBuilder, (void*)ArrayObj::append, appendArgs);
+            llvm::Value* pNativeCallValue = createNativeCall(currentBuilder, (void*)ArrayObj::append, appendArgs);
+
+            // Store llvm::Value pair for OSR purposes
+            infoForOSR->argsInArrayObj.push_back(std::pair<llvm::Value*, llvm::Value*>(pArgValue, pNativeCallValue));
 	} else {
             // Create basic blocks for the expression compilation
             llvm::BasicBlock* pEntryBlock = llvm::BasicBlock::Create(*s_Context, "", callerVersion.pLLVMFunc);
@@ -6525,7 +6553,10 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
             addArgs.push_back(pInArray);
             addArgs.push_back(pArgObj);
 
-            createNativeCall(currentBuilder, (void*)ArrayObj::addObject, addArgs);
+            llvm::Value* pNativeCallValue = createNativeCall(currentBuilder, (void*)ArrayObj::addObject, addArgs);
+
+            // Store llvm::Value pair for OSR purposes
+            infoForOSR->argsInArrayObj.push_back(std::pair<llvm::Value*, llvm::Value*>(pArgObj, pNativeCallValue));
 	}
     }
 
@@ -6539,6 +6570,9 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
     callArgs.push_back(pOutArgCount);
 
     llvm::Value* pOutArray = createNativeCall(currentBuilder, (void*)Interpreter::callFunction, callArgs);
+
+    // Store value for OSR purposes
+    infoForOSR->interpreterCallInst = pOutArray;
 
     // Find the type set for this expression
     ExprTypeMap::const_iterator typeItr = callerVersion.pTypeInferInfo->exprTypeMap.find(pOrigExpr);

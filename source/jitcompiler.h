@@ -95,6 +95,7 @@ Daniele Cono D'Elia, August 2015.
 */
 class JITCompiler
 {
+    friend class OSRFeval;
 public:
 
 	// LLVM type vector type definition

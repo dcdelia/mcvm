@@ -9,6 +9,7 @@
 
 #include "analysismanager.h"
 #include "analysis_reachdefs.h"
+#include "assignstmt.h"
 #include "functions.h"
 #include "stmtsequence.h"
 #include "typeinfer.h"
@@ -22,20 +23,23 @@
 class FevalInfo : public AnalysisInfo {
     public:
         typedef struct FevalCallInfo {
-            Statement* stmt;
+            AssignStmt* assStmt;
+            ParamExpr*  pExpr;
             int loopIdx;
-            IIRNode* parent;
-            Expression* firstArg;
+            StmtSequence* parentStmtSeq;
+            const Expression* firstArg;
             VarDefMap* reachDefs;
         } FevalCallInfo;
 
         typedef std::vector<FevalCallInfo*> FevalCallsVec;
         typedef std::map<SymbolExpr*, std::vector<FevalCallInfo*>> SymToStatementsMap;
+        typedef std::map<StmtSequence*, StmtSequence*> StmtSeqToStmtSeqMap;
 
         FevalCallsVec FevalCalls;
         SymToStatementsMap ConstantFirstArg;
         bool containsFevalInstructions = false;
         std::set<ParamExpr*> ParamExpressions;
+        StmtSeqToStmtSeqMap ParentMap;
 
         bool toOptimize() { return !ConstantFirstArg.empty(); }
         bool toTrack(ParamExpr* pExpr) {

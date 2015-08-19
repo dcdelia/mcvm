@@ -30,17 +30,17 @@ ParamExpr* ParamExpr::copy() const
 {
 	// Create an argument vector to store the argument copies
 	ExprVector arguments;
-	
+
 	// Copy each argument
 	for (ExprVector::const_iterator itr = m_arguments.begin(); itr != m_arguments.end(); ++itr)
 		arguments.push_back((Expression*)(*itr)->copy());
-		
+
 	// Create and return a copy of this node
 	return new ParamExpr(
 		m_pSymbolExpr->copy(),
 		arguments
 	);
-}	
+}
 
 /***************************************************************
 * Function: ParamExpr::toString()
@@ -53,21 +53,21 @@ std::string ParamExpr::toString() const
 {
 	// Declare a string for the output
 	std::string output;
-	
+
 	// Add the symbol expression string and open the argument list
 	output += m_pSymbolExpr->toString() + "(";
-	
+
 	// For each argument
 	for (ExprVector::const_iterator itr = m_arguments.begin(); itr != m_arguments.end(); ++itr)
 	{
 		// Add the argument to the output
 		output += (*itr)->toString();
-		
+
 		// If this isn't the last argument, add a comma
 		if (itr != --m_arguments.end())
 			output += ", ";
 	}
-	
+
 	// Close the argument list
 	output += ")";
 
@@ -86,17 +86,17 @@ Expression::ExprVector ParamExpr::getSubExprs() const
 {
 	// Create a list to store the sub-expression pointers
 	ExprVector list;
-	
+
 	// Add the symbol to the list
 	list.push_back(m_pSymbolExpr);
-	
+
 	// For each argument
 	for (size_t i = 0; i < m_arguments.size(); ++i)
-	{		
+	{
 		// Add the sub-expression to the list
 		list.push_back(m_arguments[i]);
 	}
-	
+
 	// Return the list
 	return list;
 }
@@ -115,7 +115,7 @@ void ParamExpr::replaceSubExpr(size_t index, Expression* pNewExpr)
 	{
 		// Ensure the new expression is a symbol
 		assert (pNewExpr->getExprType() == Expression::SYMBOL);
-		
+
 		// Replace the symbol expression
 		m_pSymbolExpr = (SymbolExpr*)pNewExpr;
 		return;
@@ -123,10 +123,22 @@ void ParamExpr::replaceSubExpr(size_t index, Expression* pNewExpr)
 
 	// Decrement the index by 1
 	index -= 1;
-	
+
 	// Ensure the index is valid
 	assert (index < m_arguments.size());
-	
+
 	// Replace the corresponding argument
-	m_arguments[index] = pNewExpr;	
+	m_arguments[index] = pNewExpr;
+}
+
+/***************************************************************
+* Function: ParamExpr::getArgument()
+* Purpose : Returns the i-th argument in m_arguments
+* Initial : Daniele Cono D'Elia on August 19, 2015.
+****************************************************************
+Revisions and bug fixes:
+*/
+const Expression* ParamExpr::getArgument(size_t index) const {
+    assert(index < m_arguments.size());
+    return m_arguments[index];
 }

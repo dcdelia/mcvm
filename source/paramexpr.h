@@ -37,35 +37,38 @@ Revisions and bug fixes:
 class ParamExpr : public Expression
 {
 public:
-	
+
 	// Constructor
 	ParamExpr(SymbolExpr* symExpr, const ExprVector& arguments)
 	: m_pSymbolExpr(symExpr), m_arguments(arguments)
 	{ m_exprType = PARAM; }
-	
+
 	// Method to recursively copy this node
 	ParamExpr* copy() const;
-	
+
 	// Method to access sub-expressions
 	ExprVector getSubExprs() const;
-	
+
 	// Method to replace a sub-expression
 	void replaceSubExpr(size_t index, Expression* pNewExpr);
-	
+
 	// Method to obtain a string representation of this node
 	virtual std::string toString() const;
-	
+
 	// Accessor to get the symbol expression
 	SymbolExpr* getSymExpr() const { return m_pSymbolExpr; }
-	
+
 	// Accessor to get the arguments
 	const ExprVector& getArguments() const { return m_arguments; }
-	
+
+        // Accessor to get a specific argument
+        const Expression* getArgument(size_t index) const;
+
 protected:
-	
+
 	// Symbol expression
 	SymbolExpr* m_pSymbolExpr;
-	
+
 	// Function arguments
 	ExprVector m_arguments;
 };
