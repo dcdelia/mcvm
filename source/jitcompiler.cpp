@@ -6161,7 +6161,7 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 	const ParamExpr::ExprVector& arguments = pParamExpr->getArguments();
 
         FevalInfo* fevalInfo = const_cast<FevalInfo*>(version.pFevalInfo);
-        bool trackFevalCall = s_jitFevalOptVar && (pSymbol->getSymName() == "feval")
+        bool trackFevalCall = s_jitFevalOptVar && fevalInfo->containsFevalInstructions && (pSymbol->getSymName() == "feval")
                                 && fevalInfo->toTrack(const_cast<ParamExpr*>(pParamExpr));
 
 	// Lookup the symbol in the reaching definitions
@@ -6451,6 +6451,13 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
     // Generate FevalInfoForOSR object
     OSRFeval::FevalInfoForOSR *infoForOSR = OSRFeval::createFevalInfoForOSR(&callerFunction, &callerVersion);
     infoForOSR->pParamExpr = (ParamExpr*)pOrigExpr;
+    
+    // Create a copy of current VariableMap
+    for (VariableMap::iterator it = varMap.begin(), end = varMap.end(); it != end; ++it) {
+        SymbolExpr* sym = it->first;
+        Value* v = new Value(it->second.pValue, it->second.objType);
+        infoForOSR->varMap->insert(std::pair<SymbolExpr*, Value*>(sym, v));
+    }
 
     // Add the callee function to the callee set
     callerFunction.callees.insert(pCalleeFunc);
