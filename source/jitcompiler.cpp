@@ -74,10 +74,6 @@ ConfigVar JITCompiler::s_jitCopyEnableVar("jit_copy_enable", ConfigVar::BOOL, "f
 // Config variable for enable optimization of feval instructions
 ConfigVar JITCompiler::s_jitFevalOptVar("jit_feval_opt", ConfigVar::BOOL, "true");
 
-// Config variable to enable/disable on-stack replacement capability
-ConfigVar JITCompiler::s_jitOsrEnableVar("jit_osr_enable", ConfigVar::BOOL, "false");
-ConfigVar JITCompiler::s_jitOsrStrategyVar("jit_osr_strategy", ConfigVar::STRING, "any");
-
 // Config variables to enable/disable specific JIT optimizations
 ConfigVar JITCompiler::s_jitUseArrayOpts("jit_use_array_opts", ConfigVar::BOOL, "true");
 ConfigVar JITCompiler::s_jitUseBinOpOpts("jit_use_binop_opts", ConfigVar::BOOL, "true");
@@ -100,9 +96,6 @@ llvm::LLVMContext* JITCompiler::s_Context;
 llvm::ExecutionEngine* JITCompiler::s_pExecEngine = NULL;
 llvm::Module* JITCompiler::s_MCJITModuleInUse = NULL;
 llvm::DataLayout* JITCompiler::s_data_layout = NULL ;
-
-// LLVM function pass manager (for the osr info pass)
-llvm::FunctionPassManager* JITCompiler::s_pOsrInfoPass = NULL;
 
 // Map of function pointers to native function objects
 JITCompiler::NativeMap JITCompiler::s_nativeMap;
@@ -545,24 +538,7 @@ void JITCompiler::initialize()
 	ConfigManager::registerVar(&s_jitNoWriteBoundChecks);
 	ConfigManager::registerVar(&s_jitCopyEnableVar);
         ConfigManager::registerVar(&s_jitFevalOptVar);
-
-        ConfigManager::registerVar(&s_jitOsrEnableVar);
-        ConfigManager::registerVar(&s_jitOsrStrategyVar);
 }
-
-/***************************************************************
- * Function: JITCompiler::initializeOSR()
- * Purpose : Initialize OSR data structures ...
- * Initial : Nurudeen Abiodun Lameed on February 20, 2012
- ****************************************************************
-Revisions and bug fixes:
-*/
-void JITCompiler::initializeOSR() {
-  // initialize osr logic data structures
-  if (!s_jitOsrEnableVar)
-    return;
-}
-
 
 /***************************************************************
 * Function: JITCompiler::shutdown()
@@ -574,8 +550,6 @@ N.A. Lameed, 2011, 2012.
 */
 void JITCompiler::shutdown()
 {
-        if (s_pOsrInfoPass) delete s_pOsrInfoPass;
-
     // remove FPMs
     for (auto &pair: s_FunctionPassManagerMap) {
         delete pair.second;
@@ -6451,7 +6425,7 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
     // Generate FevalInfoForOSR object
     OSRFeval::FevalInfoForOSR *infoForOSR = OSRFeval::createFevalInfoForOSR(&callerFunction, &callerVersion);
     infoForOSR->pParamExpr = (ParamExpr*)pOrigExpr;
-    
+
     // Create a copy of current VariableMap
     for (VariableMap::iterator it = varMap.begin(), end = varMap.end(); it != end; ++it) {
         SymbolExpr* sym = it->first;

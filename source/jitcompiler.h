@@ -116,9 +116,6 @@ public:
 	// Method to shut down the JIT compiler
 	static void shutdown();
 
-    // Method to initialize osr facility
-	static void initializeOSR();
-
 	// Method to register a native function
 	static void regNativeFunc(
 		const std::string& name,
@@ -170,10 +167,6 @@ public:
 
         // Config variable for enable optimization of feval instructions
         static ConfigVar s_jitFevalOptVar;
-
-    // Config variables to enable/disable on-stack replacement
-    static ConfigVar s_jitOsrEnableVar;
-    static ConfigVar s_jitOsrStrategyVar;
 
 private:
 
@@ -899,10 +892,7 @@ private:
 	// Map of program functions to function objects
 	static FunctionMap s_functionMap;
 
-        static llvm::DataLayout* s_data_layout ;
-
-    // LLVM function pass manager (for osr pass)
-    static llvm::FunctionPassManager* s_pOsrInfoPass;
+        static llvm::DataLayout* s_data_layout;
 };
 
 #endif // #ifndef JITCOMPILER_H_

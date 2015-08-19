@@ -65,10 +65,6 @@ int main(int argc, char** argv)
 	// Parse the command-line arguments
 	ConfigManager::parseCmdArgs(argc, argv);
 
-    // OSR depends on the osr-flag being enabled, try it
-    // after parsing the command line arguments
-    JITCompiler::initializeOSR();
-
 	// TODO NAL: get host name and port from Config ...
 	// create and connect to natlab (server mode)
 	Client::openSocketStream(Client::FRONTEND_DEFAULT_HOST, Client::FRONTEND_DEFAULT_PORT);
