@@ -188,18 +188,21 @@ OSRLibrary::OSRPair OSRLibrary::insertFinalizedOSR(Function &F1, BasicBlock &B1,
     BasicBlock* ptrToSrcBlock;
     Module*     parentForSrc;
 
-    if (!updateF1) {
-        ValueToValueMapTy srcToNewSrcVMap;
+    // TODO rewrite this part
+    std::vector<Value*> newValuesToPass;
+    OSRCond newCond;
+    ValueToValueMapTy srcToNewSrcVMap;
 
+    if (!updateF1) {
         Twine newSrcFunName = F1NewName.isTriviallyEmpty() ?
                                 Twine(src->getName(), "WithOSR") : const_cast<Twine&>(F1NewName); // (1) TODO use better names
         newSrcFun = duplicateFunction(src, newSrcFunName, srcToNewSrcVMap);
-        std::vector<Value*> newValuesToPass; // I have to regenerate valuesToPass as well!
+         // I have to regenerate valuesToPass as well!
         for (std::vector<Value*>::iterator it = valuesToPass.begin(), end = valuesToPass.end(); it != end; ++it) {
             newValuesToPass.push_back(srcToNewSrcVMap[*it]);
         }
 
-        OSRCond newCond = regenerateOSRCond(cond, srcToNewSrcVMap); // (2)
+        newCond = regenerateOSRCond(cond, srcToNewSrcVMap); // (2)
 
         ptrToValuesToPass = &newValuesToPass;
         ptrToOSRCond = &newCond;
@@ -391,10 +394,13 @@ OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(OSRLibrary::OpenOSRInfo& info, OSR
     BasicBlock* ptrToSrcBlock;
     Module* parentForSrc;
 
+    // TODO rewrite this part
+    OSRCond newCond;
+
     if (!updateF1) {
         // step (1)
         newSrcFun = duplicateFunction(src, newFunName, srcToNewSrcVMap);
-        OSRCond newCond = regenerateOSRCond(cond, srcToNewSrcVMap);
+        newCond = regenerateOSRCond(cond, srcToNewSrcVMap);
 
         ptrToOSRCond = &newCond;
         ptrToSrcBlock = cast<BasicBlock>(srcToNewSrcVMap[srcBlock]);

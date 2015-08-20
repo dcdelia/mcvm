@@ -12,10 +12,12 @@
 #include "jitcompiler.h"
 #include "objects.h"
 #include "symbolexpr.h"
-#include <llvm/IR/Value.h>
+#include "../OSR/LLVMUtils.hpp"
+
 #include <map>
 #include <set>
 #include <utility>
+#include <llvm/IR/Value.h>
 
 class OSRFeval {
 public:
@@ -55,18 +57,21 @@ public:
     typedef std::pair<JITCompiler::CompFunction*, JITCompiler::CompVersion*> CompPair;
     typedef std::map<CompPair, std::vector<FevalInfoForOSR*>> CompPairToOSRInfoMap;
     typedef std::map<CompPair, LocForOSRPoints> CompPairToOSRPoints;
+    typedef std::map<CompPair, LLVMUtils::ClonedFunc> CompPairToCtrlFun;
 
-    static FevalInfoForOSR* createFevalInfoForOSR(JITCompiler::CompFunction* pFunction,
-        JITCompiler::CompVersion* pVersion);
+    static FevalInfoForOSR* createFevalInfoForOSR(JITCompiler::CompFunction* pCompFunction,
+        JITCompiler::CompVersion* pCompVersion);
 
-    static LocForOSRPoints& getLocationsForOSRPoints(JITCompiler::CompFunction* pFunction,
-        JITCompiler::CompVersion* pVersion);
+    static bool processCompVersion(JITCompiler::CompFunction* pCompFunction,
+        JITCompiler::CompVersion* pCompVersion);
 
     static CompPairToOSRInfoMap CompOSRInfoMap;
     static CompPairToOSRPoints  CompOSRLocMap;
+    static CompPairToCtrlFun    CompOSRCtrlFunMap;
 
 private:
     static LocForOSRPoints computeLocationsForOSRPoints(FevalInfo* analysisInfo);
+    static LocForOSRPoints& getLocationsForOSRPoints(CompPair funPair);
 };
 
 #endif

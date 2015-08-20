@@ -1183,19 +1183,7 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 	entryBuilder.CreateBr(pSeqBlock);
 
         if (s_jitFevalOptVar) {
-            OSRFeval::CompPair funPair(&compFunction, &compVersion);
-            OSRFeval::CompPairToOSRInfoMap::iterator cpIt = OSRFeval::CompOSRInfoMap.find(funPair);
-            if (cpIt != OSRFeval::CompOSRInfoMap.end()) {
-                std::cerr << "Current function contains annotated feval instructions!" << std::endl;
-                for (OSRFeval::FevalInfoForOSR *info: cpIt->second) {
-                    info->dump();
-                }
-
-                std::cerr << "OSR points should be inserted at these instructions:" << std::endl;
-                for (ParamExpr* loc: OSRFeval::getLocationsForOSRPoints(&compFunction, &compVersion)) {
-                    std::cerr << loc->toString() << std::endl;
-                }
-            } else {
+            if (!OSRFeval::processCompVersion(&compFunction, &compVersion)) {
                 runFPM(pFuncObj); // optimizations disrupt stored values... TODO!
             }
         } else {
