@@ -2,12 +2,13 @@ OUT = mcvm
 OBJDIR = build
 SRCDIR = source
 
-# novel OSR library written by D.C. D'Elia (github.com/dcdelia/tinyvm)
-OSRDIR = OSR
-OSROBJDIR = $(OBJDIR)/OSR
-OSRCXXFLAGS = -O0 -g -Wall $(shell llvm-config --cxxflags) # no RTTI on LLVM "Release" builds
+# integration with novel OSR library written by D.C. D'Elia (github.com/dcdelia/tinyvm)
+OSR_DIR = OSR
+OSR_OBJDIR = $(OBJDIR)/OSR
+OSR_INCLUDE =
+OSR_CXXFLAGS =  $(OSR_INCLUDE) -O0 -g -Wall $(shell llvm-config --cxxflags) # no RTTI on LLVM "Release" builds
 
-INCLUDE = -Ivendor/include -Ilib/include -I/usr/local/include -I$(OSRDIR)
+INCLUDE = -Ivendor/include -Ilib/include -I/usr/local/include # -I$(OSR_DIR)
 CXXFLAGS =   $(INCLUDE) -Wall -g3 -std=c++11 -Wno-deprecated
 CXXFLAGS += -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DMCVM_USE_LAPACKE -Wfatal-errors
 #LLVMLIBS = $(shell llvm-config --libfiles)
@@ -28,25 +29,25 @@ _OBJS = analysis_arraycopy.o analysis_boundscheck.o analysis_copyplacement.o ana
 		typeinfer.o unaryopexpr.o utility.o xml.o mcjithelper.o analysis_feval.o osr_feval.o
 OBJS = $(patsubst %,$(OBJDIR)/%,$(_OBJS))
 
-_OSR_OBJS = Liveness.o OSRLibrary.o StateMap.o
-OSR_OBJS = $(patsubst %,$(OSROBJDIR)/%,$(_OSR_OBJS))
+_OSR_OBJS = Liveness.o OSRLibrary.o StateMap.o LLVMUtils.o
+OSR_OBJS = $(patsubst %,$(OSR_OBJDIR)/%,$(_OSR_OBJS))
 
 all: $(OUT)
 
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-$(OSROBJDIR):
-	mkdir -p $(OSROBJDIR)
+$(OSR_OBJDIR):
+	mkdir -p $(OSR_OBJDIR)
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CXX) -c $(INCLUDE) -o $@ $< $(CXXFLAGS)
 
-$(OSROBJDIR)/%.o: $(OSRDIR)/%.cpp | $(OSROBJDIR)
-	$(CXX) -c $(INCLUDE) -o $@ $< $(OSRCXXFLAGS)
+$(OSR_OBJDIR)/%.o: $(OSR_DIR)/%.cpp | $(OSR_OBJDIR)
+	$(CXX) -c $(INCLUDE) -o $@ $< $(OSR_CXXFLAGS)
 
 $(OUT): $(OBJS) $(OSR_OBJS)
-	$(CXX) $(OBJDIR)/*.o $(OSROBJDIR)/*.o $(LLVMLIBS) $(LIBS) -o $(OUT)
+	$(CXX) $(OBJDIR)/*.o $(OSR_OBJDIR)/*.o $(LLVMLIBS) $(LIBS) -o $(OUT)
 
 .PHONY: clean
 

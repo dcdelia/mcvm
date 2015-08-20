@@ -13,6 +13,7 @@
 #include "objects.h"
 #include "symbolexpr.h"
 #include "../OSR/LLVMUtils.hpp"
+#include "../OSR/OSRLibrary.hpp"
 
 #include <map>
 #include <set>
@@ -52,6 +53,16 @@ public:
         }
     } FevalInfoForOSR;
 
+    typedef struct FevalInfoForOSRGen {
+        FevalInfoForOSR*    fevalInfoForOSR;
+        llvm::Value*        arg1;
+        llvm::Value*        arg2;
+        llvm::Value*        environment;
+        std::vector<llvm::Value*>*  passedValues;
+        JITCompiler::CompFunction*  pCompFunction;
+        JITCompiler::CompVersion*   pCompVersion;
+    } FevalInfoForOSRGen;
+
     typedef std::set<ParamExpr*> LocForOSRPoints;
 
     typedef std::pair<JITCompiler::CompFunction*, JITCompiler::CompVersion*> CompPair;
@@ -72,6 +83,9 @@ public:
 private:
     static LocForOSRPoints computeLocationsForOSRPoints(FevalInfo* analysisInfo);
     static LocForOSRPoints& getLocationsForOSRPoints(CompPair funPair);
+
+    static void* funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAddr);
+    static OSRLibrary::OSRCond generateDefaultOSRCond();
 };
 
 #endif
