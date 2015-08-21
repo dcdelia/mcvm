@@ -81,11 +81,16 @@ public:
     static CompPairToCtrlFun    CompOSRCtrlFunMap;
 
 private:
+    typedef std::pair<ProgFunction*, std::vector<ParamExpr*>*> OptimizedFunPair;
     static LocForOSRPoints computeLocationsForOSRPoints(FevalInfo* analysisInfo);
     static LocForOSRPoints& getLocationsForOSRPoints(CompPair funPair);
 
     static void* funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAddr);
     static OSRLibrary::OSRCond generateDefaultOSRCond();
+    static OptimizedFunPair generateIIRFunc(ProgFunction* orig, Function* calledFunc,
+        OSRFeval::FevalInfoForOSRGen* genInfo);
+    static void parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,
+        std::set<AssignStmt*> &origStmtsToMatch, std::map<AssignStmt*, AssignStmt*> &mapNewToOldSmts);
 };
 
 #endif

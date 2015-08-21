@@ -12,6 +12,8 @@
 #include "../OSR/Liveness.hpp"
 #include "../OSR/OSRLibrary.hpp"
 #include "mcvmstdlib.h"
+#include "chararrayobj.h"
+#include "interpreter.h"
 
 #include <vector>
 #include <utility>
@@ -22,7 +24,6 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Value.h>
 #include <llvm/PassManager.h>
-//#include <llvm/Support/Casting.h>
 #include <llvm/Transforms/Scalar.h>
 
 // static fields
@@ -276,7 +277,8 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
                 SymbolExpr* sym = it->first;
                 JITCompiler::Value* jitVal = it->second;
                 if (it->second->pValue == v) {
-                    std::cerr << "variable " << sym->getSymName() << " of type " << jitVal->objType << std::endl; // TODO type
+                    std::cerr << "variable " << sym->getSymName() << " of type "
+                            << DataObject::getTypeName(jitVal->objType) << std::endl;
                     break;
                 }
                 if (++it == end) {
@@ -288,7 +290,162 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     }
     assert(!error);
 
+    DataObject* argForFeval = (DataObject*)profDataAddr;
+    DataObject::Type argForFevalType = argForFeval->getType();
+
+    std::cerr << "Analyzing passed profiling value..." << std::endl;
+    std::cerr << "--> argument has type " << DataObject::getTypeName(argForFevalType) << std::endl;
+    std::cerr << "--> string representation: " << argForFeval->toString() << std::endl;
+
+    Function* calledIIRFunc;
+
+    // see fevalFunc() in mcvmstdblib.cpp
+    if (argForFevalType == DataObject::FN_HANDLE) {
+        FnHandleObj* pHandle = (FnHandleObj*)argForFeval;
+        calledIIRFunc = pHandle->getFunction();
+    } else if (argForFevalType == DataObject::CHARARRAY) {
+        CharArrayObj* pCharArray = (CharArrayObj*)argForFeval;
+
+        // see callByName() in interpreter.cpp
+        DataObject* pObject = Interpreter::evalSymbol(SymbolExpr::getSymbol(pCharArray->getString()), &Interpreter::s_globalEnv);
+        if (pObject->getType() != DataObject::FUNCTION) {
+            throw RunError("symbol is not bound to a function");
+        }
+        calledIIRFunc = (Function*)pObject;
+    } else {
+        throw RunError("can only apply feval to function handles or names");
+    }
+
+    std::cerr << "Function to call: " << calledIIRFunc->getFuncName() << std::endl;
+
+    // generate IIR function where feval calls are replaced with direct calls
+    OptimizedFunPair optPair = generateIIRFunc((ProgFunction*)genInfo->pCompFunction->pProgFunc, calledIIRFunc, genInfo);
 
     assert(false);
     return nullptr;
+}
+
+OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Function* calledFunc,
+        OSRFeval::FevalInfoForOSRGen* genInfo) {
+    FevalInfo* analysis = const_cast<FevalInfo*>(genInfo->pCompVersion->pFevalInfo);
+    ParamExpr* pExpr = genInfo->fevalInfoForOSR->pParamExpr;
+
+    // determine which symbols we should manipulate
+    SymbolExpr* pSymForFeval = const_cast<SymbolExpr*>((const SymbolExpr*)pExpr->getArgument(0));
+    SymbolExpr* pSymToCall = SymbolExpr::getSymbol(calledFunc->getFuncName());
+
+    if (ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Symbol to replace in feval: " << pSymForFeval->getSymName() << std::endl;
+        std::cerr << "Symbol to call directly: " << pSymToCall->getSymName() << std::endl;
+    }
+
+    // determine which statements should be replaced
+    std::vector<FevalInfo::FevalCallInfo*> &vecFevalCallInfo = analysis->ConstantFirstArg[pSymForFeval];
+    std::set<AssignStmt*> assignStmts;
+    for (FevalInfo::FevalCallInfo* info: vecFevalCallInfo) {
+        assignStmts.insert(info->assStmt);
+    }
+
+    /* Clone IIR function and update it */
+    ProgFunction* newFun = orig->copyWithCurrentBody();
+    newFun->setFuncName("OSR_" + orig->getFuncName());
+
+    std::map<AssignStmt*, AssignStmt*> mapNewToOldAssignSmts;
+    std::vector<ParamExpr*> *newParamExprs = new std::vector<ParamExpr*>();
+
+    parseClonedFunForIIRMapping(orig->getCurrentBody(), newFun->getCurrentBody(), assignStmts, mapNewToOldAssignSmts);
+    assert(assignStmts.empty());
+
+    for (std::map<AssignStmt*, AssignStmt*>::iterator it = mapNewToOldAssignSmts.begin(),
+            end = mapNewToOldAssignSmts.end(); it != end; ++it) {
+        AssignStmt* pNewStmt = it->first;
+        //AssignStmt* pOldStmt = it->second;
+
+        // we checked that the type is Expression::PARAM during the analysis phase
+        ParamExpr* pExpr = (ParamExpr*)pNewStmt->getRightExpr();
+
+        const Expression::ExprVector& oldArgs = pExpr->getArguments();
+        Expression::ExprVector newArgs; // TODO assert check on pSymForFeval vs oldArgs[0]?
+        for (size_t index = 1, numArgs = oldArgs.size(); index < numArgs; ++index) {
+            newArgs.push_back(oldArgs[index]);
+        }
+
+        if (ConfigManager::s_veryVerboseVar) {
+            std::cerr << "Old expr: " << pExpr->toString() << std::endl;
+        }
+
+        // replace feval with direct call and set new args
+        pExpr->replaceSubExpr(0, pSymToCall);
+        pExpr->replaceArgs(std::move(newArgs));
+
+        newParamExprs->push_back(pExpr); // TODO perhaps we need assignments?
+
+        if (ConfigManager::s_veryVerboseVar) {
+            std::cerr << "New expr: " << pExpr->toString() << std::endl;
+        }
+    }
+
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << orig->toString();
+    }
+
+    std::cerr << newFun->toString();
+
+    return OptimizedFunPair(newFun, newParamExprs);
+}
+
+void OSRFeval::parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,
+        std::set<AssignStmt*> &origStmtsToMatch, std::map<AssignStmt*, AssignStmt*> &mapNewToOldSmts) {
+    StmtSequence::StmtVector& origStmts = const_cast<StmtSequence::StmtVector&>(origSeq->getStatements());
+    StmtSequence::StmtVector& newStmts = const_cast<StmtSequence::StmtVector&>(clonedSeq->getStatements());
+
+    size_t numStmts = origStmts.size();
+    //assert(numStmts == newStmts.size());
+    for (size_t index = 0; index < numStmts; ++index) {
+        Statement* pOldStmt = origStmts[index];
+
+        switch (pOldStmt->getStmtType()) {
+            case Statement::ASSIGN:
+            {
+                AssignStmt* pOldAssignStmt = (AssignStmt*) pOldStmt;
+                std::set<AssignStmt*>::iterator it = origStmtsToMatch.find(pOldAssignStmt);
+                if (it != origStmtsToMatch.end()) {
+                    AssignStmt* pNewAssignStmt = (AssignStmt*) newStmts[index];
+                    mapNewToOldSmts.insert(std::pair<AssignStmt*, AssignStmt*>(pNewAssignStmt, pOldAssignStmt));
+                    origStmtsToMatch.erase(it);
+                    if (origStmtsToMatch.empty()) return;
+                }
+            }
+            break;
+
+            case Statement::IF_ELSE:
+            {
+                IfElseStmt* pOldIfElseStmt = (IfElseStmt*) pOldStmt;
+                IfElseStmt* pNewIfElseStmt = (IfElseStmt*) newStmts[index];
+
+                parseClonedFunForIIRMapping(pOldIfElseStmt->getIfBlock(), pNewIfElseStmt->getIfBlock(),
+                                            origStmtsToMatch, mapNewToOldSmts);
+                if (origStmtsToMatch.empty()) return;
+                parseClonedFunForIIRMapping(pOldIfElseStmt->getElseBlock(), pNewIfElseStmt->getElseBlock(),
+                                            origStmtsToMatch, mapNewToOldSmts);
+                if (origStmtsToMatch.empty()) return;
+            }
+            break;
+
+            case Statement::LOOP:
+            {
+                LoopStmt* pOldLoopStmt = (LoopStmt*) pOldStmt;
+                LoopStmt* pNewLoopStmt = (LoopStmt*) newStmts[index];
+                parseClonedFunForIIRMapping(pOldLoopStmt->getBodySeq(), pNewLoopStmt->getBodySeq(),
+                                            origStmtsToMatch, mapNewToOldSmts);
+                if (origStmtsToMatch.empty()) return;
+            }
+            break;
+
+            default:
+            {
+                // nothing to do
+            }
+        }
+    }
 }

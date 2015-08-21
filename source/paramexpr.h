@@ -52,6 +52,9 @@ public:
 	// Method to replace a sub-expression
 	void replaceSubExpr(size_t index, Expression* pNewExpr);
 
+        // Method to replace all arguments (and their number can change)
+        void replaceArgs(ExprVector newArguments);
+
 	// Method to obtain a string representation of this node
 	virtual std::string toString() const;
 

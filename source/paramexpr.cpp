@@ -142,3 +142,14 @@ const Expression* ParamExpr::getArgument(size_t index) const {
     assert(index < m_arguments.size());
     return m_arguments[index];
 }
+
+/***************************************************************
+* Function: ParamExpr::replaceArgs()
+* Purpose : Replace all arguments (and their number can change)
+* Initial : Daniele Cono D'Elia on August 21, 2015.
+****************************************************************
+Revisions and bug fixes:
+*/
+void ParamExpr::replaceArgs(Expression::ExprVector newArguments) {
+    m_arguments = std::move(newArguments);
+}

@@ -133,7 +133,7 @@ public:
 
 	// Method to evaluate a symbol expression
 	static DataObject* evalSymbolExpr(const SymbolExpr* pExpr, Environment* pEnv, size_t nargout);
-	
+
 	// Method to evaluate a symbol in a given environment
 	static DataObject* evalSymbol(const SymbolExpr* pExpr, Environment* pEnv);
 
@@ -145,19 +145,19 @@ public:
 
 	// Method to load compilation units
 	static CompUnits loadCompUnits(CompUnits& nodes, const std::string& nameToken, const bool bindScript);
-	
+
 	// Method to build the local environment for a function
 	static void buildLocalEnv(ProgFunction* pFunction, Environment* pLocalEnv);
-	
+
 	// Method to set a binding in the global environment
 	static void setBinding(const std::string& name, DataObject* pObject);
 
 	// Method to get the symbols bound in the global environment
 	Environment::SymbolVec getGlobalSyms();
-	
+
 	// Method to evaluate a symbol in the global environment
 	static DataObject* evalGlobalSym(SymbolExpr* pSymbol);
-	
+
 	// Method to clear the program functions from the global environment
 	static void clearProgFuncs();
 
@@ -170,11 +170,11 @@ public:
 
 	// Config variable to enable/disable type inference profiling
 	static ConfigVar s_profTypeInfer;
-	
-private:
 
-	// Global execution environment
+        // Global execution environment
 	static Environment s_globalEnv;
+
+private:
 
 	// Static "nargin" and "nargout" symbol objects
 	static SymbolExpr* s_pNarginSym;
