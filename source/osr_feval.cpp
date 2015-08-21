@@ -11,6 +11,7 @@
 #include "../OSR/LLVMUtils.hpp"
 #include "../OSR/Liveness.hpp"
 #include "../OSR/OSRLibrary.hpp"
+#include "mcvmstdlib.h"
 
 #include <vector>
 #include <utility>
@@ -132,7 +133,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
     FPM.add(llvm::createCFGSimplificationPass());
     FPM.doInitialization();
     FPM.run(*currFunction);
-    
+
     /* Process each candidate location for OSR point insertion */
     std::vector<FevalInfoForOSR*> &fevalInfoForOSRVec = CompOSRInfoMap[funPair];
 
@@ -170,7 +171,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             }
 
             /*
-            std::cerr << "Available Value* from FevalInfoForOSR:" << std::endl;
+            std::cerr << "Info from FevalInfoForOSR:" << std::endl;
             std::cerr << "arguments:" << std::endl;
             for (auto &pair: info->argsInArrayObj) {
                 std::cerr << (void*)pair.first << " && " << (void*)pair.second << std::endl;
@@ -180,6 +181,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             */
 
             std::cerr << "environment: " << (void*)pCompVersion->pEnvObject << std::endl;
+            // Note that &mcvm::stdlib::feval is the first arg for Interpreter::callFunction()
 
             std::cerr << "Function arguments:" << std::endl;
             for (llvm::Function::arg_iterator argIt = currFunction->arg_begin(),
@@ -191,6 +193,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
 
         // prepare FevalInfoForOSRGen object
         FevalInfoForOSRGen* infoForOSRGen = new FevalInfoForOSRGen();
+        infoForOSRGen->fevalInfoForOSR = info;
         infoForOSRGen->pCompFunction = pCompFunction;
         infoForOSRGen->pCompVersion = pCompVersion;
         infoForOSRGen->environment = pCompVersion->pEnvObject;
@@ -217,11 +220,18 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             }
         }
 
+        // determine which llvm::Value corresponds to the first argument for the feval call
+        std::pair<llvm::Value*, llvm::Value*> &firstPairForArrayObj = info->argsInArrayObj[0];
+        llvm::Value* profVal = firstPairForArrayObj.first;
+        if (ConfigManager::s_veryVerboseVar) {
+            std::cerr << "First argument for feval: [" << (void*)profVal << "] "; profVal->dump();
+        }
+
         OSRLibrary::OSRPair retOSRPair = OSRLibrary::insertOpenOSR(*JITCompiler::s_Context, openOSRInfo, cond,
-                                            nullptr, generator, true, currFunction->getName(), valuesToTransfer);
+                                            profVal, generator, true, currFunction->getName(), valuesToTransfer);
 
         if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
-            retOSRPair.first->dump(); // updated currFunction
+            //retOSRPair.first->dump(); // updated currFunction
             retOSRPair.second->dump(); // generated stub
         }
     }
@@ -239,6 +249,46 @@ OSRLibrary::OSRCond OSRFeval::generateDefaultOSRCond() {
 
 void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAddr) {
     std::cerr << "Hi! I will generate optimized code on-the-fly :-)" << std::endl;
+
+    llvm::Function* srcFun = (llvm::Function*)info->f1;
+    llvm::BasicBlock* srcB = (llvm::BasicBlock*)info->b1;
+
+    FevalInfoForOSRGen* genInfo = (FevalInfoForOSRGen*)info->extra;
+    FevalInfoForOSR* infoAtIIR = genInfo->fevalInfoForOSR;
+
+    std::cerr << "Analyzing passed values..." << std::endl;
+    bool error = false;
+    for (size_t index = 0, size = genInfo->passedValues->size(); index < size; ++index) {
+        llvm::Value* v = (*(genInfo->passedValues))[index];
+        std::cerr << "[" << index << "] with address " << (void*)v << std::endl;
+        std::cerr << "--> ";
+        // try to match against environment or arguments
+        if (v == genInfo->environment) {
+            std::cerr << "environment object" << std::endl;
+        } else if (v == genInfo->arg1) {
+            std::cerr << "argument 1 (input)" << std::endl;
+        } else if (v == genInfo->arg2) {
+            std::cerr << "argument 2 (output)" << std::endl;
+        } else {
+            // try to match against IIR variables
+            for (IIRVarMap::iterator it = infoAtIIR->varMap->begin(),
+                    end = infoAtIIR->varMap->end(); it != end; ) {
+                SymbolExpr* sym = it->first;
+                JITCompiler::Value* jitVal = it->second;
+                if (it->second->pValue == v) {
+                    std::cerr << "variable " << sym->getSymName() << " of type " << jitVal->objType << std::endl; // TODO type
+                    break;
+                }
+                if (++it == end) {
+                    std::cerr << "UNABLE TO MATCH VALUE!!!" << std::endl;
+                    error = true;
+                }
+            }
+        }
+    }
+    assert(!error);
+
+
     assert(false);
     return nullptr;
 }
