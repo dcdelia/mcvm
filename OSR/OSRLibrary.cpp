@@ -33,8 +33,6 @@ using namespace llvm;
  * - use better aliases for types
  * - use const references more
  * - fix names in OSRDestFun
- * - live values vs OSRCond
- * - Context parameter
  * - verbose mode
  * - what would happen to a reassigned Argument??
  * - general attributes of the Function? (http://llvm.org/docs/HowToUseAttributes.html)
@@ -53,8 +51,8 @@ static bool verifyAux(Function* F, raw_os_ostream* OS, bool* preventOptimize = n
     return ret;
 }
 
-Function* OSRLibrary::generateOSRDestFun(Function &F1, Function &F2, StateMap::BlockPair &srcDestBlocks,
-                                std::vector<Value*> &valuesToPass, StateMap &M, const Twine& F2NewName) {
+Function* OSRLibrary::generateOSRDestFun(LLVMContext &Context, Function &F1, Function &F2,
+        StateMap::BlockPair &srcDestBlocks, std::vector<Value*> &valuesToPass, StateMap &M, const Twine& F2NewName) {
 
     /* [Prepare F2' aka OSRDest] Workflow:
      * (1)  Generate prototype for OSRDest function
@@ -110,7 +108,7 @@ Function* OSRLibrary::generateOSRDestFun(Function &F1, Function &F2, StateMap::B
 
     std::vector<Value*>& valuesToSetAtDest = M.getValuesToSetForDestFunction(srcDestBlocks);
     std::pair<BasicBlock*, ValueToValueMapTy*> entryPointPair = M.createEntryPointForNewDestFunction(srcDestBlocks,
-            newDestBlock, valuesToSetAtDest, fetchedValuesToOSRDestArgs, getGlobalContext());
+            newDestBlock, valuesToSetAtDest, fetchedValuesToOSRDestArgs, Context);
 
     BasicBlock* newEntryPoint = entryPointPair.first;
     ValueToValueMapTy *updatesForDestToOSRDestVMap = entryPointPair.second;
@@ -151,9 +149,9 @@ Function* OSRLibrary::generateOSRDestFun(Function &F1, Function &F2, StateMap::B
 
 }
 
-OSRLibrary::OSRPair OSRLibrary::insertFinalizedOSR(Function &F1, BasicBlock &B1, Function &F2,
-                        BasicBlock &B2, OSRLibrary::OSRCond &cond, StateMap &M, bool updateF1,
-                        const Twine& F1NewName, const Twine& F2NewName) { // default value for the last two parameters is ""
+OSRLibrary::OSRPair OSRLibrary::insertFinalizedOSR(LLVMContext &Context, Function &F1, BasicBlock &B1, Function &F2,
+                        BasicBlock &B2, OSRLibrary::OSRCond &cond, StateMap &M, bool updateF1, const Twine& F1NewName,
+                        const Twine& F2NewName) { // default value for the last two parameters is ""
     // common stuff for the generation of F1' and F2'
     raw_os_ostream errStream(std::cerr);
     bool preventOptimize = false; // set by verifyAux in case of error
@@ -161,15 +159,8 @@ OSRLibrary::OSRPair OSRLibrary::insertFinalizedOSR(Function &F1, BasicBlock &B1,
     std::vector<Value*> valuesToPass = M.getValuesToFetchFromSrcFunction(srcDestBlocks);
     assert(F1.getReturnType() == F2.getReturnType());
 
-    // verifyFunction() needs a Module
-    Module tmpMod("OSRtmpMod", getGlobalContext());
-
     /* Prepare F2' aka OSRDestFun */
-    Function* OSRDestFun = generateOSRDestFun(F1, F2, srcDestBlocks, valuesToPass, M, F2NewName);
-
-    /* Check generated OSRDestFun for well-formedness */
-    tmpMod.getFunctionList().push_back(OSRDestFun);
-    verifyAux(OSRDestFun, &errStream, &preventOptimize);
+    Function* OSRDestFun = generateOSRDestFun(Context, F1, F2, srcDestBlocks, valuesToPass, M, F2NewName);
 
     /* [Prepare F1' aka newSrc] Workflow:
      * (1) Duplicate F1 into newSrc
@@ -216,7 +207,7 @@ OSRLibrary::OSRPair OSRLibrary::insertFinalizedOSR(Function &F1, BasicBlock &B1,
         parentForSrc = src->getParent();
     }
 
-    BasicBlock* OSR_B = generateTriggerOSRBlock(OSRDestFun, *ptrToValuesToPass); // (3)
+    BasicBlock* OSR_B = generateTriggerOSRBlock(Context, OSRDestFun, *ptrToValuesToPass); // (3)
     OSR_B->insertInto(newSrcFun);
 
     Twine splitBlockName("splitBlockForOSRTo", OSRDestFun->getName()); // (4)
@@ -224,39 +215,49 @@ OSRLibrary::OSRPair OSRLibrary::insertFinalizedOSR(Function &F1, BasicBlock &B1,
     BasicBlock* splittedBlock = insertOSRCond (newSrcFun, ptrToSrcBlock, OSR_B, *ptrToOSRCond, splitBlockName);
 
     if (parentForSrc == nullptr) { // (!updateF1) term in || is redundant
+        Module tmpMod("OSRtmpMod", Context);
+
+        /* Check OSRDestFun for well-formedness */
+        tmpMod.getFunctionList().push_back(OSRDestFun);
+        verifyAux(OSRDestFun, &errStream, &preventOptimize);
+
         tmpMod.getFunctionList().push_back(newSrcFun); // (5)
         verifyAux(newSrcFun, &errStream, &preventOptimize);
+
+        FunctionPassManager FPM(&tmpMod);
+
+        FPM.add(createCFGSimplificationPass());
+        FPM.doInitialization();
+        FPM.run(*OSRDestFun);
+
+        FPM.run(*OSRDestFun);
+        FPM.run(*newSrcFun);
+
+        OSRDestFun->removeFromParent(); // will remove the old entrypoint and fix PHI nodes
+        newSrcFun->removeFromParent();
     } else {
-        verifyAux(src, &errStream, &preventOptimize);
+        /* Add OSRDestFun to same module and check for well-formedness */
+        verifyAux(OSRDestFun, &errStream, &preventOptimize);
+
+        verifyAux(src, &errStream, &preventOptimize); // (5)
+
         FunctionPassManager FPM(parentForSrc);
         FPM.add(createCFGSimplificationPass());
         FPM.doInitialization();
+
+        FPM.run(*OSRDestFun); // will remove the old entrypoint and fix PHI nodes
         FPM.run(*src);
     }
-
-    FunctionPassManager FPM(&tmpMod);
-    FPM.add(createCFGSimplificationPass());
-    FPM.doInitialization();
-    FPM.run(*OSRDestFun); // will remove the old entrypoint and fix PHI nodes
-
-    if (parentForSrc == nullptr) { // (!updateF1) term in || is redundant
-        FPM.run(*newSrcFun);
-        newSrcFun->removeFromParent();
-    }
-
-    OSRDestFun->removeFromParent();
 
     return OSRPair(newSrcFun, OSRDestFun);
 }
 
-OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(OSRLibrary::OpenOSRInfo& info, OSRLibrary::OSRCond& cond,
-        Value* profDataVal, OSRLibrary::DestFunGenerator destFunGenerator, bool updateF1,
-        const Twine& F1NewName, std::vector<Value*>* valuesToTransfer) {
+OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(LLVMContext& Context, OSRLibrary::OpenOSRInfo& info,
+        OSRLibrary::OSRCond& cond, Value* profDataVal, OSRLibrary::DestFunGenerator destFunGenerator,
+        bool updateF1, const Twine& F1NewName, std::vector<Value*>* valuesToTransfer) {
 
-    LLVMContext& Context = getGlobalContext();
     PointerType* i8PointerTy = PointerType::get(IntegerType::get(Context, 8), 0);
 
-    Module tmpMod("OSRtmpMod", Context);
     Function *stub;
     Function *src = info.f1;
     BasicBlock* srcBlock = info.b1;
@@ -369,7 +370,13 @@ OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(OSRLibrary::OpenOSRInfo& info, OSR
     CallInst* destFunGeneratorCall = CallInst::Create(destFunGenVal, destFunGenArgs, "destFunGenCall", stubEntryPoint); // direct call to absolute address
 
     // make an indirect call to the generated function
-    CallInst* generatedFunCall = CallInst::Create(destFunGeneratorCall, argsForFunToGenerate, "generatedFunCall");
+    CallInst* generatedFunCall;
+    if (retTy->isVoidTy()) {
+        generatedFunCall = CallInst::Create(destFunGeneratorCall, argsForFunToGenerate);
+    } else {
+        generatedFunCall = CallInst::Create(destFunGeneratorCall, argsForFunToGenerate, "generatedFunCall");
+    }
+
     stubEntryPoint->getInstList().push_back(generatedFunCall);
 
     // step (7)
@@ -439,7 +446,7 @@ OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(OSRLibrary::OpenOSRInfo& info, OSR
     }
 
     // step (3)
-    BasicBlock* OSR_B = generateTriggerOSRBlock(stub, newValuesToPass);
+    BasicBlock* OSR_B = generateTriggerOSRBlock(Context, stub, newValuesToPass);
     OSR_B->insertInto(newSrcFun);
 
     // step (4)
@@ -450,10 +457,11 @@ OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(OSRLibrary::OpenOSRInfo& info, OSR
     raw_os_ostream errStream(std::cerr);
     bool preventOptimize = false;
 
-    tmpMod.getFunctionList().push_back(stub);
-    verifyAux(stub, &errStream, &preventOptimize);
-
     if (parentForSrc == nullptr) {
+        Module tmpMod("OSRtmpMod", Context);
+        tmpMod.getFunctionList().push_back(stub);
+        verifyAux(stub, &errStream, &preventOptimize);
+
         tmpMod.getFunctionList().push_back(newSrcFun);
         verifyAux(newSrcFun, &errStream, &preventOptimize);
 
@@ -463,7 +471,11 @@ OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(OSRLibrary::OpenOSRInfo& info, OSR
         FPM.run(*newSrcFun);
 
         newSrcFun->removeFromParent();
+        stub->removeFromParent();
     } else {
+        parentForSrc->getFunctionList().push_back(stub);
+        verifyAux(stub, &errStream, &preventOptimize);
+
         verifyAux(src, &errStream, &preventOptimize);
 
         FunctionPassManager FPM(parentForSrc);
@@ -471,8 +483,6 @@ OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(OSRLibrary::OpenOSRInfo& info, OSR
         FPM.doInitialization();
         FPM.run(*src);
     }
-
-    stub->removeFromParent();
 
     if (valuesToTransfer == nullptr) {
         delete valuesToPassTmp;
@@ -683,25 +693,32 @@ OSRLibrary::OSRCond OSRLibrary::regenerateOSRCond(OSRLibrary::OSRCond &cond, Val
     return newCond;
 }
 
-BasicBlock* OSRLibrary::generateTriggerOSRBlock(Function* OSRDest, std::vector<Value*> &valuesToPass) {
+BasicBlock* OSRLibrary::generateTriggerOSRBlock(llvm::LLVMContext &Context, Function* OSRDest,
+        std::vector<Value*> &valuesToPass) {
     StringRef OSRFunName = OSRDest->getName();
     Type* retTy = OSRDest->getReturnType();
 
     // generate basic block to trigger the OSR transition
     Twine OSRBlockName("OSRBlockTo", OSRFunName);
-    BasicBlock* OSR_B = BasicBlock::Create(getGlobalContext(), OSRBlockName);
+    BasicBlock* OSR_B = BasicBlock::Create(Context, OSRBlockName);
 
     // generate call instruction for the finalized OSR transition
-    Twine OSRCallName("OSRCallTo", OSRFunName);
-    CallInst* callInst = CallInst::Create(OSRDest, valuesToPass, OSRCallName);
+    CallInst* callInst;
+    if (OSRDest->getReturnType()->isVoidTy()) {
+        callInst = CallInst::Create(OSRDest, valuesToPass);
+    } else {
+        Twine OSRCallName("OSRCallTo", OSRFunName);
+        callInst = CallInst::Create(OSRDest, valuesToPass, OSRCallName);
+    }
+
     OSR_B->getInstList().push_back(callInst);
 
     // if OSRDest is non-void we should return the value it computes
     ReturnInst* retInst;
     if (retTy->isVoidTy()) {
-        retInst = ReturnInst::Create(getGlobalContext());
+        retInst = ReturnInst::Create(Context);
     } else {
-        retInst = ReturnInst::Create(getGlobalContext(), callInst);
+        retInst = ReturnInst::Create(Context, callInst);
     }
     OSR_B->getInstList().push_back(retInst);
 

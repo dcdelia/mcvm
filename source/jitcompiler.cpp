@@ -1182,14 +1182,17 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 	//       to the entry block during compilation, see getCallEnv for details.
 	entryBuilder.CreateBr(pSeqBlock);
 
+        // feval optimization pass
         if (s_jitFevalOptVar) {
-            if (!OSRFeval::processCompVersion(&compFunction, &compVersion)) {
-                runFPM(pFuncObj); // optimizations disrupt stored values... TODO!
+            bool updated = OSRFeval::processCompVersion(&compFunction, &compVersion);
+            if (updated && (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar)) {
+                std::cerr << "Function " << compVersion.pLLVMFunc->getName().str()
+                        << " has been instrumented with OSR points for feval optimization" << std::endl;
             }
-        } else {
-            // Run the optimization passes on the function
-            runFPM(pFuncObj);
         }
+
+        // Optimize IR
+        runFPM(pFuncObj);
 
         const std::string compiledFunctionName = pFuncObj->getName().str();
 

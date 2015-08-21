@@ -132,9 +132,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
     FPM.add(llvm::createCFGSimplificationPass());
     FPM.doInitialization();
     FPM.run(*currFunction);
-
-    //currFunction->dump();
-
+    
     /* Process each candidate location for OSR point insertion */
     std::vector<FevalInfoForOSR*> &fevalInfoForOSRVec = CompOSRInfoMap[funPair];
 
@@ -191,6 +189,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             }
         }
 
+        // prepare FevalInfoForOSRGen object
         FevalInfoForOSRGen* infoForOSRGen = new FevalInfoForOSRGen();
         infoForOSRGen->pCompFunction = pCompFunction;
         infoForOSRGen->pCompVersion = pCompVersion;
@@ -201,7 +200,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
         infoForOSRGen->arg2 = argIt++;
         infoForOSRGen->passedValues = valuesToTransfer;
 
-        // prepare data structures for insertOpenOSR
+        // prepare OpenOSRInfo object for insertOpenOSR
         OSRLibrary::OpenOSRInfo openOSRInfo;
         openOSRInfo.f1 = currFunction;
         openOSRInfo.b1 = splitBB;
@@ -218,25 +217,16 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             }
         }
 
-        OSRLibrary::OSRPair retOSRPair = OSRLibrary::insertOpenOSR(openOSRInfo, cond, nullptr, generator,
-                                            true, "", valuesToTransfer);
-
-        // insert stub into module
-        currModule->getFunctionList().push_back(retOSRPair.second);
+        OSRLibrary::OSRPair retOSRPair = OSRLibrary::insertOpenOSR(*JITCompiler::s_Context, openOSRInfo, cond,
+                                            nullptr, generator, true, currFunction->getName(), valuesToTransfer);
 
         if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
-            retOSRPair.first->dump();
-            retOSRPair.second->dump();
+            retOSRPair.first->dump(); // updated currFunction
+            retOSRPair.second->dump(); // generated stub
         }
     }
 
     return true;
-}
-
-void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAddr) {
-    std::cerr << "Hi! I will generate optimized code on-the-fly :-)" << std::endl;
-    assert(false);
-    return nullptr;
 }
 
 OSRLibrary::OSRCond OSRFeval::generateDefaultOSRCond() {
@@ -245,4 +235,10 @@ OSRLibrary::OSRCond OSRFeval::generateDefaultOSRCond() {
     cond.push_back(new llvm::FCmpInst(llvm::CmpInst::FCMP_TRUE, one, one, "alwaysOSR"));
 
     return cond;
+}
+
+void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAddr) {
+    std::cerr << "Hi! I will generate optimized code on-the-fly :-)" << std::endl;
+    assert(false);
+    return nullptr;
 }
