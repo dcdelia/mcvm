@@ -82,7 +82,7 @@ public:
 
 private:
     typedef std::pair<ProgFunction*, std::vector<ParamExpr*>*> OptimizedFunPair;
-    static LocForOSRPoints computeLocationsForOSRPoints(FevalInfo* analysisInfo);
+    static LocForOSRPoints computeLocationsForOSRPoints(FevalAnalysisInfo* analysisInfo);
     static LocForOSRPoints& getLocationsForOSRPoints(CompPair funPair);
 
     static void* funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAddr);
@@ -92,7 +92,7 @@ private:
     static void parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,
         std::set<AssignStmt*> &origStmtsToMatch, std::map<AssignStmt*, AssignStmt*> &mapNewToOldSmts);
     static llvm::Function* generateIRforFunction(ProgFunction* pFunc, JITCompiler::CompFunction* pOldCompFunc,
-        JITCompiler::CompVersion* pOldCompVersion);
+        JITCompiler::CompVersion* pOldCompVersion, std::vector<ParamExpr*>* optimizedParamExprVec);
 };
 
 #endif

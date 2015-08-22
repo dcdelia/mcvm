@@ -292,7 +292,7 @@ private:
 		const ArrayCopyAnalysisInfo* pArrayCopyInfo;
 
                 // Feval analysis information
-                const FevalInfo* pFevalInfo;
+                const FevalAnalysisInfo* pFevalInfo;
 
 		// Input argument storage modes and object types
 		LLVMTypeVector inArgStoreModes;

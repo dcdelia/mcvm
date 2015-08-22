@@ -17,7 +17,7 @@
 #include <map>
 #include <utility>
 
-void parseStatementForFevalCalls(Statement* stmt, StmtSequence* parentStmtSeq, FevalInfo* analysisInfo, int loop_depth) {
+void parseStatementForFevalCalls(Statement* stmt, StmtSequence* parentStmtSeq, FevalAnalysisInfo* analysisInfo, int loop_depth) {
     switch (stmt->getStmtType()) {
         case Statement::ASSIGN:
         {
@@ -26,7 +26,7 @@ void parseStatementForFevalCalls(Statement* stmt, StmtSequence* parentStmtSeq, F
             if (pRightExpr->getExprType() == Expression::PARAM) {
                 ParamExpr* pParamExpr = (ParamExpr*) pRightExpr;
                 if (pParamExpr->getSymExpr()->getSymName() == "feval") {
-                    FevalInfo::FevalCallInfo *callInfo = new FevalInfo::FevalCallInfo();
+                    FevalAnalysisInfo::FevalCallInfo *callInfo = new FevalAnalysisInfo::FevalCallInfo();
 
                     callInfo->assStmt = pAssignStmt;
                     callInfo->pExpr = pParamExpr;
@@ -100,24 +100,24 @@ void parseStatementForFevalCalls(Statement* stmt, StmtSequence* parentStmtSeq, F
     }
 }
 
-std::map<FevalInfo::FunMapKey, FevalInfo*> FevalInfo::FevalInfoMap;
+std::map<FevalAnalysisInfo::KeyForFun, FevalAnalysisInfo*> FevalAnalysisInfo::FevalInfoMap;
 
 AnalysisInfo* computeFevalInfo(const ProgFunction* pFunction, const StmtSequence* pFuncBody,
         const TypeSetString& inArgTypes, bool returnBottom) {
     // If we should return bottom, return no information
     if (returnBottom) {
-        return new FevalInfo();
+        return new FevalAnalysisInfo();
     }
 
-    FevalInfo::FunMapKey key(pFunction, pFuncBody); // analysis does not depend on inArgTypes
+    FevalAnalysisInfo::KeyForFun key(pFunction, pFuncBody); // analysis does not depend on inArgTypes
 
-    std::map<FevalInfo::FunMapKey, FevalInfo*>::iterator it = FevalInfo::FevalInfoMap.find(key);
-    if (it != FevalInfo::FevalInfoMap.end()) {
+    std::map<FevalAnalysisInfo::KeyForFun, FevalAnalysisInfo*>::iterator it = FevalAnalysisInfo::FevalInfoMap.find(key);
+    if (it != FevalAnalysisInfo::FevalInfoMap.end()) {
         return it->second;
     }
 
-    FevalInfo* pFevalInfo = new FevalInfo();
-    FevalInfo::FevalInfoMap.insert(std::pair<FevalInfo::FunMapKey, FevalInfo*>(key, pFevalInfo));
+    FevalAnalysisInfo* pFevalInfo = new FevalAnalysisInfo();
+    FevalAnalysisInfo::FevalInfoMap.insert(std::pair<FevalAnalysisInfo::KeyForFun, FevalAnalysisInfo*>(key, pFevalInfo));
 
     if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
         std::cerr << "feval analysis for function " << pFunction->getFuncName() << std::endl;
@@ -145,17 +145,18 @@ AnalysisInfo* computeFevalInfo(const ProgFunction* pFunction, const StmtSequence
         }
         return pFevalInfo;
     }
-    pFevalInfo->containsFevalInstructions = true;
 
     /* Determine if there are feval statements worth the optimization
      *
      * Heuristic in use: at least one of the found feval instructions must be inside a loop
      */
     bool optimize = false;
-    for (FevalInfo::FevalCallInfo* callInfo : pFevalInfo->FevalCalls) {
+    for (FevalAnalysisInfo::FevalCallInfo* callInfo : pFevalInfo->FevalCalls) {
         optimize |= (callInfo->loopIdx > 0);
     }
     if (!optimize) return pFevalInfo;
+
+    pFevalInfo->containsParamExprsToTrack = true;
 
     /* Compute reaching definition information and group feval statements
      * that are reached by the same definitions. */
@@ -165,7 +166,7 @@ AnalysisInfo* computeFevalInfo(const ProgFunction* pFunction, const StmtSequence
     const ProgFunction::ParamVector& inParams = pFunction->getInParams();
 
     // it is important to preserve insertion order in the scan
-    for (FevalInfo::FevalCallInfo* callInfo: pFevalInfo->FevalCalls) {
+    for (FevalAnalysisInfo::FevalCallInfo* callInfo: pFevalInfo->FevalCalls) {
 
         ReachDefMap::const_iterator defItr = pReachDefInfo->reachDefMap.find(callInfo->assStmt);
         assert(defItr != pReachDefInfo->reachDefMap.end());
@@ -200,10 +201,10 @@ AnalysisInfo* computeFevalInfo(const ProgFunction* pFunction, const StmtSequence
                     }
                     assert(funArg != nullptr);
 
-                    FevalInfo::SymToStatementsMap &cfaMap = pFevalInfo->ConstantFirstArg;
-                    FevalInfo::SymToStatementsMap::iterator cfaIt = cfaMap.find(funArg);
+                    FevalAnalysisInfo::SymToFevalCallInfosMap &cfaMap = pFevalInfo->ConstantFirstArg;
+                    FevalAnalysisInfo::SymToFevalCallInfosMap::iterator cfaIt = cfaMap.find(funArg);
                     if (cfaIt == cfaMap.end()) {
-                        cfaMap.insert(std::pair<SymbolExpr*, std::vector < FevalInfo::FevalCallInfo*>>(funArg,{callInfo}));
+                        cfaMap.insert(std::pair<SymbolExpr*, std::vector < FevalAnalysisInfo::FevalCallInfo*>>(funArg,{callInfo}));
                     } else {
                         // it is important to preserve insertion order
                         cfaIt->second.push_back(callInfo);
@@ -233,18 +234,18 @@ AnalysisInfo* computeFevalInfo(const ProgFunction* pFunction, const StmtSequence
     }
 
     /* Ignore feval statements that are not worth the optimization */
-    for (FevalInfo::SymToStatementsMap::iterator it = pFevalInfo->ConstantFirstArg.begin(),
+    for (FevalAnalysisInfo::SymToFevalCallInfosMap::iterator it = pFevalInfo->ConstantFirstArg.begin(),
             end = pFevalInfo->ConstantFirstArg.end(); it != end;) {
         bool inLoop = false;
-        for (FevalInfo::FevalCallInfo* callInfo : it->second) {
+        for (FevalAnalysisInfo::FevalCallInfo* callInfo : it->second) {
             inLoop |= (callInfo->loopIdx > 0);
         }
         if (!inLoop) {
             pFevalInfo->ConstantFirstArg.erase(it++);
         } else {
-            for (FevalInfo::FevalCallInfo* callInfo : it->second) {
+            for (FevalAnalysisInfo::FevalCallInfo* callInfo : it->second) {
                 AssignStmt* pAssignStmt = (AssignStmt*) callInfo->assStmt;
-                pFevalInfo->ParamExpressions.insert((ParamExpr*) pAssignStmt->getRightExpr());
+                pFevalInfo->FevalParamExprs.insert((ParamExpr*) pAssignStmt->getRightExpr());
             }
             ++it;
         }
@@ -257,23 +258,23 @@ AnalysisInfo* computeFevalInfo(const ProgFunction* pFunction, const StmtSequence
     return pFevalInfo;
 }
 
-void FevalInfo::printResults() {
+void FevalAnalysisInfo::printResults() {
     if (this->toOptimize()) {
         std::cerr << "=============================" << std::endl;
         std::cerr << "Feval statements to optimize:" << std::endl;
 
-        for (FevalInfo::SymToStatementsMap::iterator it = ConstantFirstArg.begin(),
+        for (FevalAnalysisInfo::SymToFevalCallInfosMap::iterator it = ConstantFirstArg.begin(),
                 end = ConstantFirstArg.end(); it != end; ++it) {
             std::cerr << std::endl << "Symbol for the call(s): " << it->first->toString() << std::endl;
             std::cerr << "Feval instruction(s) using the symbol as first argument:" << std::endl;
-            for (FevalInfo::FevalCallInfo* callInfo : it->second) {
+            for (FevalAnalysisInfo::FevalCallInfo* callInfo : it->second) {
                 std::cerr << "[@loopDepth" << callInfo->loopIdx << "] " << callInfo->assStmt->toString() << std::endl;
             }
         }
 
         std::cerr << "=============================" << std::endl;
-    } else if (this->containsFevalInstructions) {
-        std::cerr << "The function does not contain feval instructions that I can optimize." << std::endl;
+    } else if (!this->FevalCalls.empty()) {
+        std::cerr << "The function does not contain any feval instruction that I can optimize." << std::endl;
     } else {
         std::cerr << "The function does not contain any feval instruction!" << std::endl;
     }

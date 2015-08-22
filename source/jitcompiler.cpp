@@ -1173,7 +1173,7 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 		pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
 
         if (s_jitFevalOptVar) {
-            compVersion.pFevalInfo = (const FevalInfo*)AnalysisManager::requestInfo(&computeFevalInfo,
+            compVersion.pFevalInfo = (const FevalAnalysisInfo*)AnalysisManager::requestInfo(&computeFevalInfo,
                 pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
         }
 
@@ -6136,9 +6136,9 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 	// Get a reference to the argument vector
 	const ParamExpr::ExprVector& arguments = pParamExpr->getArguments();
 
-        FevalInfo* fevalInfo = const_cast<FevalInfo*>(version.pFevalInfo);
-        bool trackFevalCall = s_jitFevalOptVar && fevalInfo->containsFevalInstructions && (pSymbol->getSymName() == "feval")
-                                && fevalInfo->toTrack(const_cast<ParamExpr*>(pParamExpr));
+        FevalAnalysisInfo* fevalInfo = const_cast<FevalAnalysisInfo*>(version.pFevalInfo);
+
+        bool trackFevalOrOptCall = s_jitFevalOptVar && fevalInfo->containsParamExprsToTrack;
 
 	// Lookup the symbol in the reaching definitions
 	VarDefMap::const_iterator symDefItr = reachDefs.find(pSymbol);
@@ -6168,7 +6168,11 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 		if (pObject != NULL && pObject->getType() == DataObject::FUNCTION)
 		{
                         // feval optimization
-                        if (trackFevalCall) {
+                        if (trackFevalOrOptCall) {
+                            // determine whether the ParamExpr is a feval or an optimized call
+                            bool trackFevalCall = fevalInfo->isFevalToTrack(const_cast<ParamExpr*>(pParamExpr));
+                            assert(trackFevalCall);
+
                             return compAndTrackFeval((Function*)pObject,
 				pParamExpr->getArguments(),
 				nargout,
@@ -6202,6 +6206,8 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 			);
 		}
 	}
+
+        assert(!trackFevalOrOptCall);
 
 	//std::cout << "Looking up symbol type for: " << pSymbol->toString() << std::endl;
 

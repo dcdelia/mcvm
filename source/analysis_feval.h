@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-class FevalInfo : public AnalysisInfo {
+class FevalAnalysisInfo : public AnalysisInfo {
     public:
         typedef struct FevalCallInfo {
             AssignStmt* assStmt;
@@ -31,27 +31,51 @@ class FevalInfo : public AnalysisInfo {
             VarDefMap* reachDefs;
         } FevalCallInfo;
 
-        typedef std::vector<FevalCallInfo*> FevalCallsVec;
-        typedef std::map<SymbolExpr*, std::vector<FevalCallInfo*>> SymToStatementsMap;
+        typedef struct OptimizedCallInfo {
+            AssignStmt* assStmt;
+            ParamExpr*  pExpr;
+        } OptimizedCallInfo;
+
+        typedef std::vector<FevalCallInfo*> FevalCallInfoVec;
+        typedef std::map<SymbolExpr*, std::vector<FevalCallInfo*>> SymToFevalCallInfosMap;
         typedef std::map<StmtSequence*, StmtSequence*> StmtSeqToStmtSeqMap;
 
-        FevalCallsVec FevalCalls;
-        SymToStatementsMap ConstantFirstArg;
-        bool containsFevalInstructions = false;
-        std::set<ParamExpr*> ParamExpressions;
+        // set of FevalCallInfo objects associated with *all* feval instructions
+        FevalCallInfoVec FevalCalls;
+
+        // FevalCallInfo objects associated with a SymbolExpr that is a read-only argument
+        SymToFevalCallInfosMap ConstantFirstArg;
+
+        // set of ParamExpr objects containing a feval instruction to optimize
+        std::set<ParamExpr*> FevalParamExprs;
+
+        // set of ParamExpr objects for which a feval instruction has been optimized away
+        std::set<ParamExpr*> OptimizedParamExprs;
+
+        // used for quick inspection by JITCompiler
+        bool containsParamExprsToTrack = false;
+
+        // used for cloning, stores tree edges across StmtSequence objects
         StmtSeqToStmtSeqMap ParentMap;
 
-        bool toOptimize() { return !ConstantFirstArg.empty(); }
-        bool toTrack(ParamExpr* pExpr) {
-            return ParamExpressions.find(pExpr) != ParamExpressions.end();
+        // results for this analysis do not depend on inArgTypes!
+        typedef std::pair<const ProgFunction*, const StmtSequence*> KeyForFun;
+        static std::map<KeyForFun, FevalAnalysisInfo*> FevalInfoMap;
+
+        /* Querying methods */
+        bool toOptimize() {
+            return !ConstantFirstArg.empty();
         }
+
+        bool isFevalToTrack(ParamExpr* pExpr) {
+            return FevalParamExprs.find(pExpr) != FevalParamExprs.end();
+        }
+
+        bool isOptimizedCallToTrack(ParamExpr* pExpr) {
+            return OptimizedParamExprs.find(pExpr) != OptimizedParamExprs.end();
+        }
+
         void printResults();
-
-        typedef std::pair<const ProgFunction*, const StmtSequence*> FunMapKey;
-
-        static std::map<FunMapKey, FevalInfo*> FevalInfoMap;
-
-
 };
 
 AnalysisInfo* computeFevalInfo(

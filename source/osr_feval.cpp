@@ -49,21 +49,21 @@ OSRFeval::FevalInfoForOSR* OSRFeval::createFevalInfoForOSR(JITCompiler::CompFunc
 
 OSRFeval::LocForOSRPoints& OSRFeval::getLocationsForOSRPoints(OSRFeval::CompPair funPair) {
     if (CompOSRLocMap.count(funPair) == 0) {
-        LocForOSRPoints locs = computeLocationsForOSRPoints(const_cast<FevalInfo*>(funPair.second->pFevalInfo));
+        LocForOSRPoints locs = computeLocationsForOSRPoints(const_cast<FevalAnalysisInfo*>(funPair.second->pFevalInfo));
         CompOSRLocMap.insert(std::pair<CompPair, LocForOSRPoints>(funPair, std::move(locs)));
     }
 
     return CompOSRLocMap[funPair];
 }
 
-OSRFeval::LocForOSRPoints OSRFeval::computeLocationsForOSRPoints(FevalInfo* analysisInfo) {
+OSRFeval::LocForOSRPoints OSRFeval::computeLocationsForOSRPoints(FevalAnalysisInfo* analysisInfo) {
     OSRFeval::LocForOSRPoints locs;
 
     // parse one group at a time
-    std::vector<FevalInfo::FevalCallInfo*> tmpVec;
-    for (FevalInfo::SymToStatementsMap::iterator grpIt = analysisInfo->ConstantFirstArg.begin(),
+    std::vector<FevalAnalysisInfo::FevalCallInfo*> tmpVec;
+    for (FevalAnalysisInfo::SymToFevalCallInfosMap::iterator grpIt = analysisInfo->ConstantFirstArg.begin(),
             grpEnd = analysisInfo->ConstantFirstArg.end(); grpIt != grpEnd; ++grpIt) {
-        std::vector<FevalInfo::FevalCallInfo*> &vec = grpIt->second;
+        std::vector<FevalAnalysisInfo::FevalCallInfo*> &vec = grpIt->second;
 
         size_t vecSize = vec.size();
         locs.insert(vec[0]->pExpr);
@@ -73,9 +73,9 @@ OSRFeval::LocForOSRPoints OSRFeval::computeLocationsForOSRPoints(FevalInfo* anal
         // dominator-like analysis (results might be incomplete)
         tmpVec.push_back(vec[0]);
         for (size_t index = 1; index < vecSize; ++index) {
-            FevalInfo::FevalCallInfo* cur = vec[index];
+            FevalAnalysisInfo::FevalCallInfo* cur = vec[index];
             bool dominated = false;
-            for (FevalInfo::FevalCallInfo* prev: tmpVec) {
+            for (FevalAnalysisInfo::FevalCallInfo* prev: tmpVec) {
                 StmtSequence *curSeq = cur->parentStmtSeq;
                 StmtSequence *prevSeq = prev->parentStmtSeq;
 
@@ -321,7 +321,8 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     // generate IIR function where feval calls are replaced with direct calls
     OptimizedFunPair optPair = generateIIRFunc((ProgFunction*)genInfo->pCompFunction->pProgFunc, calledIIRFunc, genInfo);
 
-    llvm::Function* newFun = generateIRforFunction(optPair.first, genInfo->pCompFunction, genInfo->pCompVersion);
+    llvm::Function* newFun = generateIRforFunction(optPair.first, genInfo->pCompFunction,
+                                genInfo->pCompVersion, optPair.second);
 
     assert(false);
     return nullptr;
@@ -329,7 +330,7 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
 
 OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Function* calledFunc,
         OSRFeval::FevalInfoForOSRGen* genInfo) {
-    FevalInfo* analysis = const_cast<FevalInfo*>(genInfo->pCompVersion->pFevalInfo);
+    FevalAnalysisInfo* analysis = const_cast<FevalAnalysisInfo*>(genInfo->pCompVersion->pFevalInfo);
     ParamExpr* pExpr = genInfo->fevalInfoForOSR->pParamExpr;
 
     // determine which symbols we should manipulate
@@ -342,9 +343,9 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
     }
 
     // determine which statements should be replaced
-    std::vector<FevalInfo::FevalCallInfo*> &vecFevalCallInfo = analysis->ConstantFirstArg[pSymForFeval];
+    std::vector<FevalAnalysisInfo::FevalCallInfo*> &vecFevalCallInfo = analysis->ConstantFirstArg[pSymForFeval];
     std::set<AssignStmt*> assignStmts;
-    for (FevalInfo::FevalCallInfo* info: vecFevalCallInfo) {
+    for (FevalAnalysisInfo::FevalCallInfo* info: vecFevalCallInfo) {
         assignStmts.insert(info->assStmt);
     }
 
@@ -398,7 +399,7 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
 
 // code adapted from JITCompiler::compileFunction()
 llvm::Function* OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITCompiler::CompFunction* pOldCompFunc,
-        JITCompiler::CompVersion* pOldCompVersion) {
+        JITCompiler::CompVersion* pOldCompVersion, std::vector<ParamExpr*>* optimizedParamExprVec) {
     // initial MCJITHelper integration (see also end of function)
     llvm::Module* MCJITModule = JITCompiler::s_JITHelper->generateFreshModule();
     llvm::Module* prevModule = JITCompiler::s_MCJITModuleInUse;
@@ -438,7 +439,15 @@ llvm::Function* OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITComp
             &ArrayCopyElim::computeArrayCopyElim, pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
     }
 
-    /* TODO feval analysis!! */
+    // feval analysis should be treated separately as we have to track optimized expressions
+    FevalAnalysisInfo* fevalAnalysisInfo = const_cast<FevalAnalysisInfo*>( (const FevalAnalysisInfo*)
+        AnalysisManager::requestInfo(&computeFevalInfo, pFunction, compFunction.pFuncBody, compVersion.inArgTypes));
+    for (ParamExpr* pExpr: *optimizedParamExprVec) {
+        fevalAnalysisInfo->OptimizedParamExprs.insert(pExpr);
+    }
+    fevalAnalysisInfo->containsParamExprsToTrack = true;
+    compVersion.pFevalInfo = (const FevalAnalysisInfo*)fevalAnalysisInfo;
+
 
     if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
 	std::cerr << "Analysis process complete" << std::endl;
