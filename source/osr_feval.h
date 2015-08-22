@@ -91,6 +91,8 @@ private:
         OSRFeval::FevalInfoForOSRGen* genInfo);
     static void parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,
         std::set<AssignStmt*> &origStmtsToMatch, std::map<AssignStmt*, AssignStmt*> &mapNewToOldSmts);
+    static llvm::Function* generateIRforFunction(ProgFunction* pFunc, JITCompiler::CompFunction* pOldCompFunc,
+        JITCompiler::CompVersion* pOldCompVersion);
 };
 
 #endif

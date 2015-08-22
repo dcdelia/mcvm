@@ -917,6 +917,169 @@ void JITCompiler::compFuncReturn(llvm::IRBuilder<>& exitBuilder, CompFunction& c
 }
 
 /***************************************************************
+* Function: JITCompiler::compileFunctionGenerateIR()
+* Purpose : Helper method to generate IR for compileFunction()
+* Initial : Daniele Cono D'Elia on August 22, 2015
+****************************************************************
+Revisions and bug fixes:
+*/
+llvm::Function* JITCompiler::compileFunctionGenerateIR(ProgFunction* pFunction, CompFunction& compFunction,
+        CompVersion& compVersion, const TypeSetString& argTypeStr, llvm::Module* MCJITModule) {
+
+    // Create a name string for the function
+    std::string funcName = pFunction->getFuncName() + "_" + ::toString((void*)compVersion.pTypeInferInfo);
+
+    // Get the input and output parameters for the function
+    const ProgFunction::ParamVector& inParams = pFunction->getInParams();
+    const ProgFunction::ParamVector& outParams = pFunction->getOutParams();
+    Expression::SymbolSet outParamSet(outParams.begin(), outParams.end());
+
+    setUpParameters(pFunction, compFunction, compVersion, argTypeStr);
+
+    // Create a type vector for the function input argument types
+    LLVMTypeVector inArgTypes;
+
+    // Add a pointer to the input data structure to the input types
+    inArgTypes.push_back(llvm::PointerType::getUnqual(compVersion.pInStructType));
+
+    // Add a pointer to the output data structure to the input types
+    inArgTypes.push_back(llvm::PointerType::getUnqual(compVersion.pOutStructType));
+
+    // Get a function type object with the appropriate signature
+    llvm::FunctionType* pFuncType = llvm::FunctionType::get(llvm::Type::getVoidTy(*s_Context), inArgTypes, false);
+
+    // Create a function object with a void pointer input type and a void return type
+    llvm::Constant* pFuncConst = MCJITModule->getOrInsertFunction(funcName, pFuncType);
+    llvm::Function* pFuncObj = llvm::cast<llvm::Function>(pFuncConst);
+
+        // Set the calling convention of the function to the C calling convention
+        pFuncObj->setCallingConv(llvm::CallingConv::C);
+
+    // Create an entry basic block for the function
+    compVersion.pEntryBlock = llvm::BasicBlock::Create(*s_Context, "entry", pFuncObj);
+    llvm::IRBuilder<> entryBuilder(compVersion.pEntryBlock);
+
+    // Store a pointer to the LLVM function object
+    compVersion.pLLVMFunc = pFuncObj;
+
+    // Create the initial variable map
+    VariableMap variableMap;
+
+    // Ensure that there are no more arguments than the number of formal parameters
+    assert (argTypeStr.size() <= inParams.size());
+
+    // Get a pointer to the input struct value
+    llvm::Value* pInStructVal = pFuncObj->arg_begin();
+
+    // For each input argument
+    for (size_t i = 0; i < argTypeStr.size(); ++i) {
+        // Get the symbol for this argument
+	SymbolExpr* pSymbol = inParams[i];
+
+	// Read the argument from the input struct
+	llvm::Value* gepValsArg[2];
+	gepValsArg[0] = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*s_Context), 0);
+	gepValsArg[1] = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*s_Context), i);
+        llvm::ArrayRef<llvm::Value*> gepValsArgRef(gepValsArg, gepValsArg+2);
+	llvm::Value* pArgAddrVal = entryBuilder.CreateGEP(pInStructVal, gepValsArgRef);
+	llvm::Value* pArgVal = entryBuilder.CreateLoad(pArgAddrVal);
+
+	// Create a value object for this argument
+	Value argValue(pArgVal, compVersion.inArgObjTypes[i]);
+
+	// Add the argument value to the variable map
+	variableMap[pSymbol] = argValue;
+    }
+
+    // Get pointers to the "nargin" and "nargout" symbols
+    SymbolExpr* pNarginSym = Interpreter::getNarginSym();
+    SymbolExpr* pNargoutSym = Interpreter::getNargoutSym();
+
+    // Read the "nargout" argument from the input struct
+    llvm::Value* gepValsNargout[2];
+    gepValsNargout[0] = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*s_Context), 0);
+    gepValsNargout[1] = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*s_Context), argTypeStr.size());
+    llvm::ArrayRef<llvm::Value*> gepValsNargoutRef(gepValsNargout, gepValsNargout+2);
+    llvm::Value* pNargoutAddrVal = entryBuilder.CreateGEP(pInStructVal, gepValsNargoutRef);
+    llvm::Value* pNargoutVal = entryBuilder.CreateLoad(pNargoutAddrVal);
+
+    // Add the "nargout" argument to the variable map
+    variableMap[pNargoutSym] = Value(pNargoutVal, DataObject::MATRIX_F64);
+
+    // Add the "nargin" constant to the variable map
+    variableMap[pNarginSym] = Value(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*s_Context), argTypeStr.size()), DataObject::MATRIX_F64);
+
+    if (s_jitCopyEnableVar)	{ // generate copy code(if necessary) before compiling the body
+	TypeInfoMap::const_iterator typeItr = compVersion.pTypeInferInfo->preTypeMap.find(compFunction.pFuncBody);
+	assert (typeItr != compVersion.pTypeInferInfo->preTypeMap.end());
+	const VarTypeMap& typeMap = typeItr->second;
+	assert(compVersion.pArrayCopyInfo);
+	const Expression::SymbolSet& copies = compVersion.pArrayCopyInfo->paramsToCopy;
+
+	// generate the required copy code, if any
+	Expression::SymbolSet::const_iterator iter = copies.begin();
+	for(; iter != copies.end(); ++iter) {
+            CopyInfo cpEntry(*iter, Expression::SymbolSet());
+	genCopyCode(entryBuilder, compFunction, compVersion, typeMap, variableMap, cpEntry);
+	}
+    }
+
+    // Declare variables to keep track of the possible exit points of the function bod
+    BranchPoint exitPoint;
+    BranchList contPoints;
+    BranchList breakPoints;
+    BranchList returnPoints;
+
+    // Compile the function's body
+    llvm::BasicBlock* pSeqBlock = compStmtSeq(compFunction.pFuncBody,compFunction,compVersion,
+	variableMap, exitPoint, contPoints, breakPoints, returnPoints);
+
+    // Create an exit basic block for the function
+    llvm::BasicBlock* pExitBlock = llvm::BasicBlock::Create(*s_Context, "exit", pFuncObj);
+
+    // Ensure that there are no unmatched continue or break points
+    if (contPoints.empty() == false || breakPoints.empty() == false) {
+	throw CompError("misplaced continue or break statement");
+    }
+
+    // Add the exit point to the return point list, if it is specified
+    if (exitPoint.first != NULL) {
+	returnPoints.push_back(exitPoint);
+    }
+
+    // Ensure that there is at least one return point
+    assert (returnPoints.empty() == false);
+
+    // Find the type info after the function body
+    TypeInfoMap::const_iterator bodyTypeItr = compVersion.pTypeInferInfo->postTypeMap.find(compFunction.pFuncBody);
+    assert (bodyTypeItr != compVersion.pTypeInferInfo->postTypeMap.end());
+
+    // Match the variable mappings for the return points
+    VariableMap exitVarMap = matchBranchPoints(compFunction, compVersion, outParamSet,
+        bodyTypeItr->second, returnPoints, pExitBlock);
+
+    //std::cout << "Done matching fn return branch points" << std::endl;
+
+    // Create an IR builder for the exit block
+    llvm::IRBuilder<> exitBuilder(pExitBlock);
+
+    // If the function has no return parameters
+    if (outParams.size() == 0) {
+	// Return immediately
+	exitBuilder.CreateRetVoid();
+    } else {
+	compFuncReturn(exitBuilder, compFunction, compVersion, exitVarMap, outParams);
+    }
+
+    // Add a branch to the compiled function body from the function's entry block
+    // NOTE: we do this at the very end because instructions may need to be added
+    //       to the entry block during compilation, see getCallEnv for details.
+    entryBuilder.CreateBr(pSeqBlock);
+
+    return pFuncObj;
+}
+
+/***************************************************************
 * Function: JITCompiler::compileFunction()
 * Purpose : Compile a program function given argument types
 * Initial : Maxime Chevalier-Boisvert on April 28, 2009
@@ -1028,159 +1191,7 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 	if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar)
 		std::cout << "Analysis process complete" << std::endl;
 
-	// Create a name string for the function
-	std::string funcName = pFunction->getFuncName() + "_" + ::toString((void*)compVersion.pTypeInferInfo);
-
-	// Get the input and output parameters for the function
-	const ProgFunction::ParamVector& inParams = pFunction->getInParams();
-	const ProgFunction::ParamVector& outParams = pFunction->getOutParams();
-	Expression::SymbolSet outParamSet(outParams.begin(), outParams.end());
-
-	setUpParameters(pFunction, compFunction, compVersion, argTypeStr);
-
-	// Create a type vector for the function input argument types
-	LLVMTypeVector inArgTypes;
-
-	// Add a pointer to the input data structure to the input types
-	inArgTypes.push_back(llvm::PointerType::getUnqual(compVersion.pInStructType));
-
-	// Add a pointer to the output data structure to the input types
-	inArgTypes.push_back(llvm::PointerType::getUnqual(compVersion.pOutStructType));
-
-	// Get a function type object with the appropriate signature
-	llvm::FunctionType* pFuncType = llvm::FunctionType::get(llvm::Type::getVoidTy(*s_Context), inArgTypes, false);
-
-	// Create a function object with a void pointer input type and a void return type
-	llvm::Constant* pFuncConst = MCJITModule->getOrInsertFunction(funcName, pFuncType);
-	llvm::Function* pFuncObj = llvm::cast<llvm::Function>(pFuncConst);
-
-	// Set the calling convention of the function to the C calling convention
-    pFuncObj->setCallingConv(llvm::CallingConv::C);
-
-    // Create an entry basic block for the function
-	compVersion.pEntryBlock = llvm::BasicBlock::Create(*s_Context, "entry", pFuncObj);
-	llvm::IRBuilder<> entryBuilder(compVersion.pEntryBlock);
-
-    // Store a pointer to the LLVM function object
-	compVersion.pLLVMFunc = pFuncObj;
-
-	// Create the initial variable map
-	VariableMap variableMap;
-
-	// Ensure that there are no more arguments than the number of formal parameters
-	assert (argTypeStr.size() <= inParams.size());
-
-	// Get a pointer to the input struct value
-	llvm::Value* pInStructVal = pFuncObj->arg_begin();
-
-	// For each input argument
-	for (size_t i = 0; i < argTypeStr.size(); ++i)
-	{
-		// Get the symbol for this argument
-		SymbolExpr* pSymbol = inParams[i];
-
-		// Read the argument from the input struct
-		llvm::Value* gepValsArg[2];
-		gepValsArg[0] = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*s_Context), 0);
-		gepValsArg[1] = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*s_Context), i);
-        llvm::ArrayRef<llvm::Value*> gepValsArgRef(gepValsArg, gepValsArg+2);
-		llvm::Value* pArgAddrVal = entryBuilder.CreateGEP(pInStructVal, gepValsArgRef);
-		llvm::Value* pArgVal = entryBuilder.CreateLoad(pArgAddrVal);
-
-		// Create a value object for this argument
-		Value argValue(pArgVal, compVersion.inArgObjTypes[i]);
-
-		// Add the argument value to the variable map
-		variableMap[pSymbol] = argValue;
-	}
-
-	// Get pointers to the "nargin" and "nargout" symbols
-	SymbolExpr* pNarginSym = Interpreter::getNarginSym();
-	SymbolExpr* pNargoutSym = Interpreter::getNargoutSym();
-
-	// Read the "nargout" argument from the input struct
-	llvm::Value* gepValsNargout[2];
-	gepValsNargout[0] = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*s_Context), 0);
-	gepValsNargout[1] = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*s_Context), argTypeStr.size());
-    llvm::ArrayRef<llvm::Value*> gepValsNargoutRef(gepValsNargout, gepValsNargout+2);
-	llvm::Value* pNargoutAddrVal = entryBuilder.CreateGEP(pInStructVal, gepValsNargoutRef);
-	llvm::Value* pNargoutVal = entryBuilder.CreateLoad(pNargoutAddrVal);
-
-	// Add the "nargout" argument to the variable map
-	variableMap[pNargoutSym] = Value(pNargoutVal, DataObject::MATRIX_F64);
-
-	// Add the "nargin" constant to the variable map
-	variableMap[pNarginSym] = Value(llvm::ConstantInt::get(llvm::Type::getInt64Ty(*s_Context), argTypeStr.size()), DataObject::MATRIX_F64);
-
-	if (s_jitCopyEnableVar)	// generate copy code(if necessary) before compiling the body
-	{
-		TypeInfoMap::const_iterator typeItr = compVersion.pTypeInferInfo->preTypeMap.find(compFunction.pFuncBody);
-		assert (typeItr != compVersion.pTypeInferInfo->preTypeMap.end());
-		const VarTypeMap& typeMap = typeItr->second;
-		assert(compVersion.pArrayCopyInfo);
-		const Expression::SymbolSet& copies = compVersion.pArrayCopyInfo->paramsToCopy;
-
-		// generate the required copy code, if any
-		Expression::SymbolSet::const_iterator iter = copies.begin();
-		for(; iter != copies.end(); ++iter)
-		{
-			CopyInfo cpEntry(*iter, Expression::SymbolSet());
-			genCopyCode(entryBuilder, compFunction, compVersion, typeMap, variableMap, cpEntry);
-		}
-	}
-
-	// Declare variables to keep track of the possible exit points of the function body
-	BranchPoint exitPoint;
-	BranchList contPoints;
-	BranchList breakPoints;
-	BranchList returnPoints;
-
-	// Compile the function's body
-	llvm::BasicBlock* pSeqBlock = compStmtSeq(compFunction.pFuncBody,compFunction,compVersion,
-		variableMap, exitPoint, contPoints, breakPoints, returnPoints);
-
-	// Create an exit basic block for the function
-	llvm::BasicBlock* pExitBlock = llvm::BasicBlock::Create(*s_Context, "exit", pFuncObj);
-
-	// Ensure that there are no unmatched continue or break points
-	if (contPoints.empty() == false || breakPoints.empty() == false)
-		throw CompError("misplaced continue or break statement");
-
-	// Add the exit point to the return point list, if it is specified
-	if (exitPoint.first != NULL)
-		returnPoints.push_back(exitPoint);
-
-	// Ensure that there is at least one return point
-	assert (returnPoints.empty() == false);
-
-	// Find the type info after the function body
-	TypeInfoMap::const_iterator bodyTypeItr = compVersion.pTypeInferInfo->postTypeMap.find(compFunction.pFuncBody);
-	assert (bodyTypeItr != compVersion.pTypeInferInfo->postTypeMap.end());
-
-	// Match the variable mappings for the return points
-	VariableMap exitVarMap = matchBranchPoints(compFunction, compVersion, outParamSet,
-			bodyTypeItr->second, returnPoints, pExitBlock);
-
-	//std::cout << "Done matching fn return branch points" << std::endl;
-
-	// Create an IR builder for the exit block
-	llvm::IRBuilder<> exitBuilder(pExitBlock);
-
-	// If the function has no return parameters
-	if (outParams.size() == 0)
-	{
-		// Return immediately
-		exitBuilder.CreateRetVoid();
-	}
-	else
-	{
-		compFuncReturn(exitBuilder, compFunction, compVersion, exitVarMap, outParams);
-	}
-
-	// Add a branch to the compiled function body from the function's entry block
-	// NOTE: we do this at the very end because instructions may need to be added
-	//       to the entry block during compilation, see getCallEnv for details.
-	entryBuilder.CreateBr(pSeqBlock);
+	llvm::Function* pFuncObj = compileFunctionGenerateIR(pFunction, compFunction, compVersion, argTypeStr, MCJITModule);
 
         // feval optimization pass
         if (s_jitFevalOptVar) {

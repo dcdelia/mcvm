@@ -321,6 +321,8 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     // generate IIR function where feval calls are replaced with direct calls
     OptimizedFunPair optPair = generateIIRFunc((ProgFunction*)genInfo->pCompFunction->pProgFunc, calledIIRFunc, genInfo);
 
+    llvm::Function* newFun = generateIRforFunction(optPair.first, genInfo->pCompFunction, genInfo->pCompVersion);
+
     assert(false);
     return nullptr;
 }
@@ -392,6 +394,70 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
     std::cerr << newFun->toString();
 
     return OptimizedFunPair(newFun, newParamExprs);
+}
+
+// code adapted from JITCompiler::compileFunction()
+llvm::Function* OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITCompiler::CompFunction* pOldCompFunc,
+        JITCompiler::CompVersion* pOldCompVersion) {
+    // initial MCJITHelper integration (see also end of function)
+    llvm::Module* MCJITModule = JITCompiler::s_JITHelper->generateFreshModule();
+    llvm::Module* prevModule = JITCompiler::s_MCJITModuleInUse;
+    JITCompiler::s_MCJITModuleInUse = MCJITModule;
+
+    // get the input argument types
+    TypeSetString &argTypeStr = pOldCompVersion->inArgTypes;
+
+    // set the local environment for the function
+    ProgFunction::setLocalEnv(pFunction, ProgFunction::getLocalEnv(pOldCompFunc->pProgFunc)); // TODO copy the env??
+
+    JITCompiler::CompFunction tmpCompFunction;
+    tmpCompFunction.pProgFunc = pFunction;
+    tmpCompFunction.pFuncBody = pFunction->getCurrentBody(); // already transformed!
+    //compFunction.callees = pOldCompFunc->callees;
+    //pFunction->setCurrentBody(tmpCompFunction.pFuncBody);
+    JITCompiler::s_functionMap.insert(std::pair<ProgFunction*, JITCompiler::CompFunction>(pFunction, tmpCompFunction));
+
+    // get compFunction and compVersion, then store the input argument types
+    JITCompiler::CompFunction &compFunction = JITCompiler::s_functionMap.find(pFunction)->second;
+    JITCompiler::CompVersion &compVersion = compFunction.versions[argTypeStr];
+    compVersion.inArgTypes = argTypeStr;
+
+    // perform analyses on IIR
+    compVersion.pReachDefInfo = (const ReachDefInfo*)AnalysisManager::requestInfo(
+	&computeReachDefs, pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
+    compVersion.pLiveVarInfo = (const LiveVarInfo*)AnalysisManager::requestInfo(&computeLiveVars,
+	pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
+    compVersion.pTypeInferInfo = (const TypeInferInfo*)AnalysisManager::requestInfo(&computeTypeInfo,
+	pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
+    compVersion.pMetricsInfo = (const MetricsInfo*)AnalysisManager::requestInfo(&computeMetrics,
+	pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
+    compVersion.pBoundsCheckInfo = (const BoundsCheckInfo*)AnalysisManager::requestInfo(&computeBoundsCheck,
+	pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
+    if (JITCompiler::s_jitCopyEnableVar) {
+	compVersion.pArrayCopyInfo = (const ArrayCopyAnalysisInfo*)AnalysisManager::requestInfo(
+            &ArrayCopyElim::computeArrayCopyElim, pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
+    }
+
+    /* TODO feval analysis!! */
+
+    if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
+	std::cerr << "Analysis process complete" << std::endl;
+    }
+
+    // generate IR code for the function
+    llvm::Function* pFuncObj = JITCompiler::compileFunctionGenerateIR(pFunction, compFunction,
+                                    compVersion, argTypeStr, MCJITModule);
+
+    /* TODO: feval optimization pass */
+    JITCompiler::runFPM(pFuncObj);
+
+    std::cerr << "--> Generated optimized IR code <---" << std::endl;
+    pFuncObj->dump();
+
+    // initial MCJITHelper integration (see also beginning of function)
+    JITCompiler::s_MCJITModuleInUse = prevModule;
+
+    return pFuncObj;
 }
 
 void OSRFeval::parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,

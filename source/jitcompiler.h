@@ -856,6 +856,15 @@ private:
 		VariableMap& varMap
 	);
 
+        // Helper method to generate IR for compileFunction()
+	static llvm::Function* compileFunctionGenerateIR(
+            ProgFunction* pFunction,
+            CompFunction& compFunction,
+            CompVersion& compVersion,
+            const TypeSetString& argTypeStr,
+            llvm::Module* MCJITModule
+        );
+
 	// Method to get the integer type for a given size in bytes
 	static llvm::Type* getIntType(size_t sizeInBytes);
 
