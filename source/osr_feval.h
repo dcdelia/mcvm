@@ -96,7 +96,7 @@ public:
 
 
 private:
-    typedef std::pair<ProgFunction*, std::vector<ParamExpr*>*> OptimizedFunPair;
+    typedef std::pair<ProgFunction*, std::map<ParamExpr*, ParamExpr*>> OptimizedFunPair;
     static LocForOSRPoints computeLocationsForOSRPoints(FevalAnalysisInfo* analysisInfo);
     static LocForOSRPoints& getLocationsForOSRPoints(CompPair funPair);
 
@@ -106,10 +106,11 @@ private:
         OSRFeval::FevalInfoForOSRGen* genInfo);
     static void parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,
         std::set<AssignStmt*> &origStmtsToMatch, std::map<AssignStmt*, AssignStmt*> &mapNewToOldSmts);
-    static std::pair<llvm::Function*, JITCompiler::CompVersion*> generateIRforFunction(
+    static std::pair<llvm::Function*, CompPair> generateIRforFunction(
         ProgFunction* pFunc, JITCompiler::CompFunction* pOldCompFunc, JITCompiler::CompVersion* pOldCompVersion,
-        std::vector<ParamExpr*>* optimizedParamExprVec);
-    static StateMap* generateStateMap(llvm::Function* origFunc, llvm::Function* newFunc);
+        std::map<ParamExpr*, ParamExpr*> &optimizedParamExprMap);
+    static StateMap* generateStateMap(llvm::Function* origFunc, llvm::Function* newFunc,
+        CompPair &newCompPair, FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr);
 };
 
 #endif

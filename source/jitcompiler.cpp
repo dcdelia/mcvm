@@ -6466,7 +6466,6 @@ JITCompiler::ValueVector JITCompiler::compAndTrackOptimizedFeval(Function* pCall
         std::cerr << "[WARNING] non-empty entry block for optimized feval call!" << std::endl;
         infoForOSR->lastInst = &pEntryBlock->back();
     }
-    
 
     // compile the function call as usual
     return compFunctionCall(pCalleeFunc, arguments, nargout, pOrigExpr, pFallbackFunc, callerFunction,

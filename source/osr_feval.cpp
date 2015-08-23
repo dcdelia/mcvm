@@ -341,16 +341,21 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     OptimizedFunPair optPair = generateIIRFunc((ProgFunction*)genInfo->pCompFunction->pProgFunc, calledIIRFunc, genInfo);
 
     // lower IIR to LLVM IR
-    std::pair<llvm::Function*, JITCompiler::CompVersion*> IRPair = generateIRforFunction(optPair.first,
+    std::pair<llvm::Function*, CompPair> IRPair = generateIRforFunction(optPair.first,
             genInfo->pCompFunction, genInfo->pCompVersion, optPair.second);
     llvm::Function* newFun = IRPair.first;
-    JITCompiler::CompVersion* newCompVersion = IRPair.second;
+    CompPair &newCompPair = IRPair.second;
     llvm::Module* modForNewFun = newFun->getParent();
 
     // generate continuation function
     llvm::Function* OSRDestFun = nullptr;
 
+    ParamExpr* pOSRTriggerExpr = infoAtIIR->pParamExpr;
+    ParamExpr* pOSRContinuationExpr = optPair.second[pOSRTriggerExpr];
+    assert (pOSRContinuationExpr != nullptr);
+
     /* TODO */
+    StateMap* stateMap = generateStateMap(srcFun, newFun, newCompPair, genInfo, pOSRContinuationExpr);
 
 
     assert(false);
@@ -370,7 +375,21 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     return pFuncPtr;
 }
 
-StateMap* OSRFeval::generateStateMap(llvm::Function* origFunc, llvm::Function* newFunc) {
+StateMap* OSRFeval::generateStateMap(llvm::Function* origFunc, llvm::Function* newFunc,
+        OSRFeval::CompPair &newCompPair, OSRFeval::FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr) {
+
+    FevalAnalysisInfo *analysis = const_cast<FevalAnalysisInfo*>(newCompPair.second->pFevalInfo);
+    OptimizedFevalInfoForOSR *optInfo = nullptr;
+
+    std::vector<OptimizedFevalInfoForOSR*> &pOptInfoVec = CompOSROptInfoMap[newCompPair];
+    for (OptimizedFevalInfoForOSR *pCur: pOptInfoVec) {
+        if (pCur->pExpr == pExpr) {
+            optInfo = pCur;
+            break;
+        }
+    }
+    assert(optInfo != nullptr);
+
     return nullptr;
 }
 
@@ -400,7 +419,7 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
     newFun->setFuncName("OSR_" + orig->getFuncName());
 
     std::map<AssignStmt*, AssignStmt*> mapNewToOldAssignSmts;
-    std::vector<ParamExpr*> *newParamExprs = new std::vector<ParamExpr*>();
+    std::map<ParamExpr*, ParamExpr*> mapOldToNewParamExprs;
 
     parseClonedFunForIIRMapping(orig->getCurrentBody(), newFun->getCurrentBody(), assignStmts, mapNewToOldAssignSmts);
     assert(assignStmts.empty());
@@ -408,7 +427,7 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
     for (std::map<AssignStmt*, AssignStmt*>::iterator it = mapNewToOldAssignSmts.begin(),
             end = mapNewToOldAssignSmts.end(); it != end; ++it) {
         AssignStmt* pNewStmt = it->first;
-        //AssignStmt* pOldStmt = it->second;
+        AssignStmt* pOldStmt = it->second;
 
         // we checked that the type is Expression::PARAM during the analysis phase
         ParamExpr* pExpr = (ParamExpr*)pNewStmt->getRightExpr();
@@ -427,7 +446,8 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
         pExpr->replaceSubExpr(0, pSymToCall);
         pExpr->replaceArgs(std::move(newArgs));
 
-        newParamExprs->push_back(pExpr); // TODO perhaps we need assignments?
+        mapOldToNewParamExprs.insert(std::pair<ParamExpr*, ParamExpr*>(
+                                (ParamExpr*)pOldStmt->getRightExpr(), pExpr));
 
         if (ConfigManager::s_veryVerboseVar) {
             std::cerr << "New expr: " << pExpr->toString() << std::endl;
@@ -440,12 +460,13 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
 
     std::cerr << newFun->toString() << std::endl;
 
-    return OptimizedFunPair(newFun, newParamExprs);
+    return OptimizedFunPair(newFun, std::move(mapOldToNewParamExprs));
 }
 
 // code adapted from JITCompiler::compileFunction()
-std::pair<llvm::Function*, JITCompiler::CompVersion*> OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITCompiler::CompFunction* pOldCompFunc,
-        JITCompiler::CompVersion* pOldCompVersion, std::vector<ParamExpr*>* optimizedParamExprVec) {
+std::pair<llvm::Function*, OSRFeval::CompPair> OSRFeval::generateIRforFunction(ProgFunction* pFunction,
+        JITCompiler::CompFunction* pOldCompFunc, JITCompiler::CompVersion* pOldCompVersion,
+        std::map<ParamExpr*, ParamExpr*> &optimizedParamExprMap) {
     // initial MCJITHelper integration (see also end of function)
     llvm::Module* MCJITModule = JITCompiler::s_JITHelper->generateFreshModule();
     llvm::Module* prevModule = JITCompiler::s_MCJITModuleInUse;
@@ -457,7 +478,7 @@ std::pair<llvm::Function*, JITCompiler::CompVersion*> OSRFeval::generateIRforFun
     // set the local environment for the function
     ProgFunction::setLocalEnv(pFunction, ProgFunction::getLocalEnv(pOldCompFunc->pProgFunc)); // TODO copy the env??
 
-    JITCompiler::CompFunction tmpCompFunction;
+    JITCompiler::CompFunction tmpCompFunction; /* TODO: avoid duplicates */
     tmpCompFunction.pProgFunc = pFunction;
     tmpCompFunction.pFuncBody = pFunction->getCurrentBody(); // already transformed!
 
@@ -487,8 +508,8 @@ std::pair<llvm::Function*, JITCompiler::CompVersion*> OSRFeval::generateIRforFun
     // feval analysis should be treated separately as we have to track optimized expressions
     FevalAnalysisInfo* fevalAnalysisInfo = const_cast<FevalAnalysisInfo*>( (const FevalAnalysisInfo*)
         AnalysisManager::requestInfo(&computeFevalInfo, pFunction, compFunction.pFuncBody, compVersion.inArgTypes));
-    for (ParamExpr* pExpr: *optimizedParamExprVec) {
-        fevalAnalysisInfo->OptimizedParamExprs.insert(pExpr);
+    for (std::pair<ParamExpr* const, ParamExpr*> &pair: optimizedParamExprMap) {
+        fevalAnalysisInfo->OptimizedParamExprs.insert(pair.second);
     }
     fevalAnalysisInfo->containsParamExprsToTrack = true;
     compVersion.pFevalInfo = (const FevalAnalysisInfo*)fevalAnalysisInfo;
@@ -510,7 +531,7 @@ std::pair<llvm::Function*, JITCompiler::CompVersion*> OSRFeval::generateIRforFun
     // initial MCJITHelper integration (see also beginning of function)
     JITCompiler::s_MCJITModuleInUse = prevModule;
 
-    return std::pair<llvm::Function*, JITCompiler::CompVersion*>(pFuncObj, &compVersion);
+    return std::pair<llvm::Function*, CompPair>(pFuncObj, CompPair(&compFunction, &compVersion));
 }
 
 void OSRFeval::parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,
