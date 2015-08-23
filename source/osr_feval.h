@@ -109,8 +109,9 @@ private:
     static std::pair<llvm::Function*, CompPair> generateIRforFunction(
         ProgFunction* pFunc, JITCompiler::CompFunction* pOldCompFunc, JITCompiler::CompVersion* pOldCompVersion,
         std::map<ParamExpr*, ParamExpr*> &optimizedParamExprMap);
-    static StateMap* generateStateMap(llvm::Function* origFunc, llvm::Function* newFunc,
-        CompPair &newCompPair, FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr);
+    static std::pair<StateMap*, llvm::Function*> generateStateMap(llvm::Function* origFunc, llvm::BasicBlock* origBlock,
+        llvm::Function* newFunc, CompPair &newCompPair, FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr);
+    //static void displayIRtoIIRValues(IIRVarMap varMap, llvm::Value* env, llvm::Value* inArg, llvm::Value* outArg);
 };
 
 #endif

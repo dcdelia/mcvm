@@ -25,6 +25,8 @@
 #include <llvm/IR/Value.h>
 #include <llvm/PassManager.h>
 #include <llvm/Transforms/Scalar.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Support/raw_ostream.h>
 
 // static fields
 OSRFeval::CompPairToOSRFevalInfoMap OSRFeval::CompOSRInfoMap;
@@ -354,31 +356,48 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     ParamExpr* pOSRContinuationExpr = optPair.second[pOSRTriggerExpr];
     assert (pOSRContinuationExpr != nullptr);
 
-    /* TODO */
-    StateMap* stateMap = generateStateMap(srcFun, newFun, newCompPair, genInfo, pOSRContinuationExpr);
+    /* Generate state mapping and continuation function */
+    std::pair<StateMap*, llvm::Function*> mapPair = generateStateMap(srcFun,
+        srcB, newFun, newCompPair, genInfo, pOSRContinuationExpr);
 
+    //StateMap* M = mapPair.first;
+    OSRDestFun = mapPair.second;
 
-    assert(false);
+    if (ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Generated continuation function (pre-optimization):" << std::endl;
+        OSRDestFun->dump();
+    }
 
     // insert continuation function into LLVM Module
     modForNewFun->getFunctionList().push_back(OSRDestFun);
 
+    // now we can perform verification of OSRDestFun
+    llvm::verifyFunction(*OSRDestFun, &llvm::outs());
+
     // perform McVM default optimizations
     JITCompiler::runFPM(OSRDestFun);
+
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Generated continuation function (post-optimization):" << std::endl;
+        OSRDestFun->dump();
+    }
 
     const std::string OSRDestFunName = OSRDestFun->getName().str();
 
     void* pFuncPtr = (void*)JITCompiler::s_pExecEngine->getFunctionAddress(OSRDestFunName);
 
-    // TODO store pFuncPtr for code caching purposes
+    // TODO store pFuncPtr for code caching purposes (and also inside CompVersion?)
 
     return pFuncPtr;
 }
 
-StateMap* OSRFeval::generateStateMap(llvm::Function* origFunc, llvm::Function* newFunc,
-        OSRFeval::CompPair &newCompPair, OSRFeval::FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr) {
+std::pair<StateMap*, llvm::Function*> OSRFeval::generateStateMap(llvm::Function* origFunc,
+        llvm::BasicBlock* origBlock, llvm::Function* newFunc, OSRFeval::CompPair &newCompPair,
+        OSRFeval::FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr) {
 
-    FevalAnalysisInfo *analysis = const_cast<FevalAnalysisInfo*>(newCompPair.second->pFevalInfo);
+    //FevalAnalysisInfo *analysis = const_cast<FevalAnalysisInfo*>(newCompPair.second->pFevalInfo);
+    FevalInfoForOSR* infoAtOldIIR = OSRGenInfo->fevalInfoForOSR; // TODO this is broken!!!
+
     OptimizedFevalInfoForOSR *optInfo = nullptr;
 
     std::vector<OptimizedFevalInfoForOSR*> &pOptInfoVec = CompOSROptInfoMap[newCompPair];
@@ -390,7 +409,107 @@ StateMap* OSRFeval::generateStateMap(llvm::Function* origFunc, llvm::Function* n
     }
     assert(optInfo != nullptr);
 
-    return nullptr;
+    // let's assume that using the empty entryBlock is fine
+    llvm::BasicBlock* newBlock = optInfo->block;
+
+    LivenessAnalysis liveForNewFun(newFunc);
+    LivenessAnalysis::LiveValues& liveInAtNewBlock = liveForNewFun.getLiveInValues(newBlock);
+    std::vector<llvm::Value*> *valuesToSet = StateMap::getValuesToSetForBlock(*newBlock, liveInAtNewBlock);
+
+    // fetch environment and arguments
+    llvm::Value* environment = newCompPair.second->pEnvObject;
+    assert(newFunc->getArgumentList().size() == 2);
+    llvm::Function::arg_iterator argIt = newFunc->arg_begin();
+    llvm::Value* arg1 = argIt++;
+    llvm::Value* arg2 = argIt++;
+
+    std::cerr << "Destination block: "; newBlock->dump();
+
+    std::map<JITCompiler::Value*, JITCompiler::Value*> IIRValMap;
+    // TODO check default initialization value
+    std::pair<llvm::Value*, llvm::Value*> inArgPair(nullptr, nullptr), outArgPair(nullptr, nullptr);
+    std::pair<llvm::Value*, llvm::Value*> envPair(nullptr, nullptr);
+    for (llvm::Value* valueToSet: *valuesToSet) { // TODO change order of if statements?
+        if (valueToSet == arg1) {
+            inArgPair.first = arg1;
+            inArgPair.second = OSRGenInfo->arg1;
+        } else if (valueToSet == arg2) {
+            outArgPair.first = arg2;
+            outArgPair.second = OSRGenInfo->arg2;
+        } else if (valueToSet == environment) {
+            envPair.first = environment;
+            envPair.second = OSRGenInfo->environment;
+        } else {
+            // inspect VarMap for the new function
+            JITCompiler::Value* newIIRVal = nullptr;
+            SymbolExpr* newSym = nullptr;
+            for (IIRVarMap::iterator it = optInfo->varMap->begin(),
+                    end = optInfo->varMap->end(); it != end; ++it) {
+                JITCompiler::Value* jitVal = it->second;
+                if (valueToSet == jitVal->pValue) {
+                    newIIRVal = jitVal;
+                    newSym = it->first;
+                    break;
+                }
+            }
+            assert(newIIRVal != nullptr);
+
+            // look for a match in the VarMap of the old function
+            JITCompiler::Value* oldIIRVal = nullptr;
+            for (IIRVarMap::iterator it = infoAtOldIIR->varMap->begin(),
+                    end = infoAtOldIIR->varMap->end(); it != end; ++it) {
+                if (it->first == newSym) { // pointer comparison for SymbolExpr (see class)
+                    oldIIRVal = it->second;
+                    break;
+                }
+            }
+            assert(oldIIRVal != nullptr);
+
+            IIRValMap[newIIRVal] = oldIIRVal;
+        }
+    }
+
+    // at this point all IIR values have a match!
+
+    StateMap *M = new StateMap(origFunc, newFunc);
+
+    // let's process arguments and environment first
+    if (inArgPair.first != nullptr) {
+        assert (inArgPair.first->getType() == inArgPair.second->getType()); // TODO?
+        M->registerOneToOneValue(inArgPair.second, inArgPair.first);
+    }
+    if (outArgPair.first != nullptr) {
+        assert (outArgPair.first->getType() == outArgPair.second->getType()); // TODO?
+        M->registerOneToOneValue(outArgPair.second, outArgPair.first);
+    }
+    if (envPair.first != nullptr) {
+        assert(envPair.second != nullptr); // TODO: can the environment be missing? can I still create it?
+        M->registerOneToOneValue(envPair.second, envPair.first);
+    }
+
+    // now we can process IIR variables [and add compensation code where needed]
+    for (std::map<JITCompiler::Value*, JITCompiler::Value*>::iterator it = IIRValMap.begin(),
+            end = IIRValMap.end(); it != end; ++it) {
+        JITCompiler::Value* newVal = it->first;
+        JITCompiler::Value* oldVal = it->second;
+
+        if (newVal->objType != oldVal->objType) {
+            assert(false); // TODO implement compensation code!
+        } else {
+            M->registerOneToOneValue(oldVal->pValue, newVal->pValue);
+        }
+    }
+
+    M->registerCorrespondingBlock(origBlock, newBlock);
+
+    // at this point we can generate the continuation function
+    StateMap::BlockPair blockPair(origBlock, newBlock);
+    std::string OSRDestFunName = (newFunc->getName().str()).append("DestOSR");
+    std::vector<llvm::Value*> *passedValues = OSRGenInfo->passedValues;
+    llvm::Function* OSRDestFun = OSRLibrary::generateOSRDestFun(*JITCompiler::s_Context ,*origFunc,
+            *newFunc, blockPair, *passedValues, *M, OSRDestFunName);
+
+    return std::pair<StateMap*, llvm::Function*>(M, OSRDestFun);
 }
 
 OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Function* calledFunc,
@@ -456,9 +575,8 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
 
     if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
         std::cerr << orig->toString();
+        std::cerr << newFun->toString() << std::endl;
     }
-
-    std::cerr << newFun->toString() << std::endl;
 
     return OptimizedFunPair(newFun, std::move(mapOldToNewParamExprs));
 }
@@ -525,8 +643,10 @@ std::pair<llvm::Function*, OSRFeval::CompPair> OSRFeval::generateIRforFunction(P
 
     /* TODO: feval optimization pass for remaining calls*/
 
-    std::cerr << "--> Generated optimized IR code <---" << std::endl;
-    pFuncObj->dump();
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "--> Generated optimized IR code <---" << std::endl;
+        pFuncObj->dump();
+    }
 
     // initial MCJITHelper integration (see also beginning of function)
     JITCompiler::s_MCJITModuleInUse = prevModule;
