@@ -33,6 +33,7 @@ OSRFeval::CompPairToOSRFevalInfoMap OSRFeval::CompOSRInfoMap;
 OSRFeval::CompPairToOSRPoints       OSRFeval::CompOSRLocMap;
 OSRFeval::CompPairToCtrlFun         OSRFeval::CompOSRCtrlFunMap;
 OSRFeval::CompPairToOSROptInfoMap   OSRFeval::CompOSROptInfoMap;
+OSRFeval::CodeCacheMap              OSRFeval::CodeCache;
 
 OSRFeval::FevalInfoForOSR* OSRFeval::createFevalInfoForOSR(JITCompiler::CompFunction* pCompFunction,
         JITCompiler::CompVersion* pCompVersion) {
@@ -269,17 +270,11 @@ OSRLibrary::OSRCond OSRFeval::generateDefaultOSRCond() {
     return cond;
 }
 
-void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAddr) {
-    std::cerr << "Hi! I will generate optimized code on-the-fly :-)" << std::endl;
-
-    llvm::Function* srcFun = (llvm::Function*)info->f1;
-    llvm::BasicBlock* srcB = (llvm::BasicBlock*)info->b1;
-
-    FevalInfoForOSRGen* genInfo = (FevalInfoForOSRGen*)info->extra;
-    FevalInfoForOSR* infoAtIIR = genInfo->fevalInfoForOSR;
-
-    std::cerr << "Analyzing passed values..." << std::endl;
+bool OSRFeval::sanityCheckOnPassedValues(OSRFeval::FevalInfoForOSRGen* genInfo) {
     bool error = false;
+
+    std::cerr << "Analyzing values passed at the OSR point..." << std::endl;
+    FevalInfoForOSR* infoAtIIR = genInfo->fevalInfoForOSR;
     for (size_t index = 0, size = genInfo->passedValues->size(); index < size; ++index) {
         llvm::Value* v = (*(genInfo->passedValues))[index];
         std::cerr << "[" << index << "] with address " << (void*)v << std::endl;
@@ -309,14 +304,27 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
             }
         }
     }
-    assert(!error);
+
+    return !error;
+}
+
+void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAddr) {
+    //std::cerr << "Hi! I will generate optimized code on-the-fly :-)" << std::endl;
+
+    llvm::Function* srcFun = (llvm::Function*)info->f1;
+    llvm::BasicBlock* srcB = (llvm::BasicBlock*)info->b1;
+
+    FevalInfoForOSRGen* genInfo = (FevalInfoForOSRGen*)info->extra;
+    FevalInfoForOSR* infoAtIIR = genInfo->fevalInfoForOSR;
 
     DataObject* argForFeval = (DataObject*)profDataAddr;
     DataObject::Type argForFevalType = argForFeval->getType();
 
-    std::cerr << "Analyzing passed profiling value..." << std::endl;
-    std::cerr << "--> argument has type " << DataObject::getTypeName(argForFevalType) << std::endl;
-    std::cerr << "--> string representation: " << argForFeval->toString() << std::endl;
+    if (ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Analyzing passed profiling value..." << std::endl;
+        std::cerr << "--> argument has type " << DataObject::getTypeName(argForFevalType) << std::endl;
+        std::cerr << "--> string representation: " << argForFeval->toString() << std::endl;
+    }
 
     Function* calledIIRFunc;
 
@@ -337,7 +345,22 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
         throw RunError("can only apply feval to function handles or names");
     }
 
-    std::cerr << "Function to call: " << calledIIRFunc->getFuncName() << std::endl;
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Function to call: " << calledIIRFunc->getFuncName() << std::endl;
+    }
+
+    // check code cache
+    CodeCacheKey cacheKey(genInfo, calledIIRFunc);
+    CodeCacheMap::iterator cacheIt = CodeCache.find(cacheKey);
+    if (cacheIt != CodeCache.end()) {
+        if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+            std::cerr << "A previously jitted code is available!" << std::endl;
+        }
+        return cacheIt->second;
+    }
+
+    // check if we have all the required information about values
+    assert(sanityCheckOnPassedValues(genInfo));
 
     // generate IIR function where feval calls are replaced with direct calls
     OptimizedFunPair optPair = generateIIRFunc((ProgFunction*)genInfo->pCompFunction->pProgFunc, calledIIRFunc, genInfo);
@@ -357,7 +380,7 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     assert (pOSRContinuationExpr != nullptr);
 
     /* Generate state mapping and continuation function */
-    std::pair<StateMap*, llvm::Function*> mapPair = generateStateMap(srcFun,
+    std::pair<StateMap*, llvm::Function*> mapPair = generateContinuationFunction(srcFun,
         srcB, newFun, newCompPair, genInfo, pOSRContinuationExpr);
 
     //StateMap* M = mapPair.first;
@@ -386,18 +409,18 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
 
     void* pFuncPtr = (void*)JITCompiler::s_pExecEngine->getFunctionAddress(OSRDestFunName);
 
-    // TODO store pFuncPtr for code caching purposes (and also inside CompVersion?)
+    // TODO store pFuncPtr inside CompVersion?
+
+    CodeCache[cacheKey] = pFuncPtr;
 
     return pFuncPtr;
 }
 
-std::pair<StateMap*, llvm::Function*> OSRFeval::generateStateMap(llvm::Function* origFunc,
+std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llvm::Function* origFunc,
         llvm::BasicBlock* origBlock, llvm::Function* newFunc, OSRFeval::CompPair &newCompPair,
         OSRFeval::FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr) {
 
-    //FevalAnalysisInfo *analysis = const_cast<FevalAnalysisInfo*>(newCompPair.second->pFevalInfo);
-    FevalInfoForOSR* infoAtOldIIR = OSRGenInfo->fevalInfoForOSR; // TODO this is broken!!!
-
+    FevalInfoForOSR* infoAtOldIIR = OSRGenInfo->fevalInfoForOSR;
     OptimizedFevalInfoForOSR *optInfo = nullptr;
 
     std::vector<OptimizedFevalInfoForOSR*> &pOptInfoVec = CompOSROptInfoMap[newCompPair];

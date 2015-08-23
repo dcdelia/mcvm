@@ -79,6 +79,9 @@ public:
     typedef std::map<CompPair, LocForOSRPoints> CompPairToOSRPoints;
     typedef std::map<CompPair, LLVMUtils::ClonedFunc> CompPairToCtrlFun;
 
+    typedef std::pair<FevalInfoForOSRGen*, Function*> CodeCacheKey;
+    typedef std::map<CodeCacheKey, void*> CodeCacheMap;
+
     static FevalInfoForOSR* createFevalInfoForOSR(JITCompiler::CompFunction* pCompFunction,
         JITCompiler::CompVersion* pCompVersion);
 
@@ -93,7 +96,8 @@ public:
     static CompPairToCtrlFun    CompOSRCtrlFunMap;
 
     static CompPairToOSROptInfoMap CompOSROptInfoMap;
-
+    
+    static CodeCacheMap CodeCache;
 
 private:
     typedef std::pair<ProgFunction*, std::map<ParamExpr*, ParamExpr*>> OptimizedFunPair;
@@ -109,9 +113,9 @@ private:
     static std::pair<llvm::Function*, CompPair> generateIRforFunction(
         ProgFunction* pFunc, JITCompiler::CompFunction* pOldCompFunc, JITCompiler::CompVersion* pOldCompVersion,
         std::map<ParamExpr*, ParamExpr*> &optimizedParamExprMap);
-    static std::pair<StateMap*, llvm::Function*> generateStateMap(llvm::Function* origFunc, llvm::BasicBlock* origBlock,
+    static std::pair<StateMap*, llvm::Function*> generateContinuationFunction(llvm::Function* origFunc, llvm::BasicBlock* origBlock,
         llvm::Function* newFunc, CompPair &newCompPair, FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr);
-    //static void displayIRtoIIRValues(IIRVarMap varMap, llvm::Value* env, llvm::Value* inArg, llvm::Value* outArg);
+    static bool sanityCheckOnPassedValues(FevalInfoForOSRGen* genInfo);
 };
 
 #endif
