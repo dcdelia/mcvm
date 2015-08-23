@@ -27,20 +27,39 @@
 #include <llvm/Transforms/Scalar.h>
 
 // static fields
-OSRFeval::CompPairToOSRInfoMap  OSRFeval::CompOSRInfoMap;
-OSRFeval::CompPairToOSRPoints   OSRFeval::CompOSRLocMap;
-OSRFeval::CompPairToCtrlFun     OSRFeval::CompOSRCtrlFunMap;
+OSRFeval::CompPairToOSRFevalInfoMap OSRFeval::CompOSRInfoMap;
+OSRFeval::CompPairToOSRPoints       OSRFeval::CompOSRLocMap;
+OSRFeval::CompPairToCtrlFun         OSRFeval::CompOSRCtrlFunMap;
+OSRFeval::CompPairToOSROptInfoMap   OSRFeval::CompOSROptInfoMap;
 
 OSRFeval::FevalInfoForOSR* OSRFeval::createFevalInfoForOSR(JITCompiler::CompFunction* pCompFunction,
         JITCompiler::CompVersion* pCompVersion) {
     FevalInfoForOSR* info = new FevalInfoForOSR();
 
     CompPair funPair(pCompFunction, pCompVersion);
-    CompPairToOSRInfoMap::iterator cpIt = CompOSRInfoMap.find(funPair);
+    CompPairToOSRFevalInfoMap::iterator cpIt = CompOSRInfoMap.find(funPair);
     if (cpIt == CompOSRInfoMap.end()) {
         CompOSRInfoMap.insert(std::pair<CompPair, std::vector<FevalInfoForOSR*>>
                                 (funPair, std::vector<FevalInfoForOSR*>()));
         cpIt = CompOSRInfoMap.find(funPair);
+    }
+    cpIt->second.push_back(info);
+
+    return info;
+}
+
+OSRFeval::OptimizedFevalInfoForOSR* OSRFeval::createOptimizedFevalInfoForOSR(
+        JITCompiler::CompFunction* pCompFunction, JITCompiler::CompVersion* pCompVersion) {
+    OptimizedFevalInfoForOSR* info = new OptimizedFevalInfoForOSR();
+    //info->varMap = new IIRVarMap();
+
+    CompPair funPair(pCompFunction, pCompVersion);
+    CompPairToOSROptInfoMap::iterator cpIt = CompOSROptInfoMap.find(funPair);
+
+    if (cpIt == CompOSROptInfoMap.end()) {
+        CompOSROptInfoMap.insert(std::pair<CompPair, std::vector<OptimizedFevalInfoForOSR*>>
+                                (funPair, std::vector<OptimizedFevalInfoForOSR*>()));
+        cpIt = CompOSROptInfoMap.find(funPair);
     }
     cpIt->second.push_back(info);
 
@@ -106,7 +125,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
     //FevalInfo* fevalInfo = const_cast<FevalInfo*>(pCompVersion->pFevalInfo);
     LocForOSRPoints& locations = getLocationsForOSRPoints(funPair);
 
-    CompPairToOSRInfoMap::iterator cpIt = CompOSRInfoMap.find(funPair);
+    CompPairToOSRFevalInfoMap::iterator cpIt = CompOSRInfoMap.find(funPair);
     if (cpIt == CompOSRInfoMap.end()) return false;
 
     std::cerr << "Current function contains annotated feval instructions!" << std::endl;
@@ -321,10 +340,37 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     // generate IIR function where feval calls are replaced with direct calls
     OptimizedFunPair optPair = generateIIRFunc((ProgFunction*)genInfo->pCompFunction->pProgFunc, calledIIRFunc, genInfo);
 
-    llvm::Function* newFun = generateIRforFunction(optPair.first, genInfo->pCompFunction,
-                                genInfo->pCompVersion, optPair.second);
+    // lower IIR to LLVM IR
+    std::pair<llvm::Function*, JITCompiler::CompVersion*> IRPair = generateIRforFunction(optPair.first,
+            genInfo->pCompFunction, genInfo->pCompVersion, optPair.second);
+    llvm::Function* newFun = IRPair.first;
+    JITCompiler::CompVersion* newCompVersion = IRPair.second;
+    llvm::Module* modForNewFun = newFun->getParent();
+
+    // generate continuation function
+    llvm::Function* OSRDestFun = nullptr;
+
+    /* TODO */
+
 
     assert(false);
+
+    // insert continuation function into LLVM Module
+    modForNewFun->getFunctionList().push_back(OSRDestFun);
+
+    // perform McVM default optimizations
+    JITCompiler::runFPM(OSRDestFun);
+
+    const std::string OSRDestFunName = OSRDestFun->getName().str();
+
+    void* pFuncPtr = (void*)JITCompiler::s_pExecEngine->getFunctionAddress(OSRDestFunName);
+
+    // TODO store pFuncPtr for code caching purposes
+
+    return pFuncPtr;
+}
+
+StateMap* OSRFeval::generateStateMap(llvm::Function* origFunc, llvm::Function* newFunc) {
     return nullptr;
 }
 
@@ -392,13 +438,13 @@ OSRFeval::OptimizedFunPair OSRFeval::generateIIRFunc(ProgFunction* orig, Functio
         std::cerr << orig->toString();
     }
 
-    std::cerr << newFun->toString();
+    std::cerr << newFun->toString() << std::endl;
 
     return OptimizedFunPair(newFun, newParamExprs);
 }
 
 // code adapted from JITCompiler::compileFunction()
-llvm::Function* OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITCompiler::CompFunction* pOldCompFunc,
+std::pair<llvm::Function*, JITCompiler::CompVersion*> OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITCompiler::CompFunction* pOldCompFunc,
         JITCompiler::CompVersion* pOldCompVersion, std::vector<ParamExpr*>* optimizedParamExprVec) {
     // initial MCJITHelper integration (see also end of function)
     llvm::Module* MCJITModule = JITCompiler::s_JITHelper->generateFreshModule();
@@ -414,8 +460,7 @@ llvm::Function* OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITComp
     JITCompiler::CompFunction tmpCompFunction;
     tmpCompFunction.pProgFunc = pFunction;
     tmpCompFunction.pFuncBody = pFunction->getCurrentBody(); // already transformed!
-    //compFunction.callees = pOldCompFunc->callees;
-    //pFunction->setCurrentBody(tmpCompFunction.pFuncBody);
+
     JITCompiler::s_functionMap.insert(std::pair<ProgFunction*, JITCompiler::CompFunction>(pFunction, tmpCompFunction));
 
     // get compFunction and compVersion, then store the input argument types
@@ -457,8 +502,7 @@ llvm::Function* OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITComp
     llvm::Function* pFuncObj = JITCompiler::compileFunctionGenerateIR(pFunction, compFunction,
                                     compVersion, argTypeStr, MCJITModule);
 
-    /* TODO: feval optimization pass */
-    JITCompiler::runFPM(pFuncObj);
+    /* TODO: feval optimization pass for remaining calls*/
 
     std::cerr << "--> Generated optimized IR code <---" << std::endl;
     pFuncObj->dump();
@@ -466,7 +510,7 @@ llvm::Function* OSRFeval::generateIRforFunction(ProgFunction* pFunction, JITComp
     // initial MCJITHelper integration (see also beginning of function)
     JITCompiler::s_MCJITModuleInUse = prevModule;
 
-    return pFuncObj;
+    return std::pair<llvm::Function*, JITCompiler::CompVersion*>(pFuncObj, &compVersion);
 }
 
 void OSRFeval::parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,

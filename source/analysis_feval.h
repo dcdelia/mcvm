@@ -31,10 +31,10 @@ class FevalAnalysisInfo : public AnalysisInfo {
             VarDefMap* reachDefs;
         } FevalCallInfo;
 
-        typedef struct OptimizedCallInfo {
+        /*typedef struct OptimizedCallInfo {
             AssignStmt* assStmt;
             ParamExpr*  pExpr;
-        } OptimizedCallInfo;
+        } OptimizedCallInfo;*/
 
         typedef std::vector<FevalCallInfo*> FevalCallInfoVec;
         typedef std::map<SymbolExpr*, std::vector<FevalCallInfo*>> SymToFevalCallInfosMap;

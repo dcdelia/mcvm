@@ -14,6 +14,7 @@
 #include "symbolexpr.h"
 #include "../OSR/LLVMUtils.hpp"
 #include "../OSR/OSRLibrary.hpp"
+#include "../OSR/StateMap.hpp"
 
 #include <map>
 #include <set>
@@ -53,6 +54,13 @@ public:
         }
     } FevalInfoForOSR;
 
+    typedef struct OptimizedFevalInfoForOSR {
+        IIRVarMap*          varMap;
+        ParamExpr*          pExpr;
+        llvm::Instruction*  lastInst;
+        llvm::BasicBlock*   block;
+    } OptimizedFevalInfoForOSR;
+
     typedef struct FevalInfoForOSRGen {
         FevalInfoForOSR*    fevalInfoForOSR;
         llvm::Value*        arg1;
@@ -66,19 +74,26 @@ public:
     typedef std::set<ParamExpr*> LocForOSRPoints;
 
     typedef std::pair<JITCompiler::CompFunction*, JITCompiler::CompVersion*> CompPair;
-    typedef std::map<CompPair, std::vector<FevalInfoForOSR*>> CompPairToOSRInfoMap;
+    typedef std::map<CompPair, std::vector<FevalInfoForOSR*>> CompPairToOSRFevalInfoMap;
+    typedef std::map<CompPair, std::vector<OptimizedFevalInfoForOSR*>> CompPairToOSROptInfoMap;
     typedef std::map<CompPair, LocForOSRPoints> CompPairToOSRPoints;
     typedef std::map<CompPair, LLVMUtils::ClonedFunc> CompPairToCtrlFun;
 
     static FevalInfoForOSR* createFevalInfoForOSR(JITCompiler::CompFunction* pCompFunction,
         JITCompiler::CompVersion* pCompVersion);
 
+    static OptimizedFevalInfoForOSR* createOptimizedFevalInfoForOSR(
+        JITCompiler::CompFunction* pCompFunction, JITCompiler::CompVersion* pCompVersion);
+
     static bool processCompVersion(JITCompiler::CompFunction* pCompFunction,
         JITCompiler::CompVersion* pCompVersion);
 
-    static CompPairToOSRInfoMap CompOSRInfoMap;
+    static CompPairToOSRFevalInfoMap CompOSRInfoMap;
     static CompPairToOSRPoints  CompOSRLocMap;
     static CompPairToCtrlFun    CompOSRCtrlFunMap;
+
+    static CompPairToOSROptInfoMap CompOSROptInfoMap;
+
 
 private:
     typedef std::pair<ProgFunction*, std::vector<ParamExpr*>*> OptimizedFunPair;
@@ -91,8 +106,10 @@ private:
         OSRFeval::FevalInfoForOSRGen* genInfo);
     static void parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* clonedSeq,
         std::set<AssignStmt*> &origStmtsToMatch, std::map<AssignStmt*, AssignStmt*> &mapNewToOldSmts);
-    static llvm::Function* generateIRforFunction(ProgFunction* pFunc, JITCompiler::CompFunction* pOldCompFunc,
-        JITCompiler::CompVersion* pOldCompVersion, std::vector<ParamExpr*>* optimizedParamExprVec);
+    static std::pair<llvm::Function*, JITCompiler::CompVersion*> generateIRforFunction(
+        ProgFunction* pFunc, JITCompiler::CompFunction* pOldCompFunc, JITCompiler::CompVersion* pOldCompVersion,
+        std::vector<ParamExpr*>* optimizedParamExprVec);
+    static StateMap* generateStateMap(llvm::Function* origFunc, llvm::Function* newFunc);
 };
 
 #endif

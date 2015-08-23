@@ -655,6 +655,23 @@ private:
 		llvm::BasicBlock* pExitBlock
 	);
 
+        // Method to compile and track an optimized-away feval
+        static ValueVector compAndTrackOptimizedFeval(
+		Function* pCalleeFunc,
+		const Expression::ExprVector& arguments,
+		size_t nargout,
+		Expression* pOrigExpr,
+		void* pFallbackFunc,
+		CompFunction& callerFunction,
+		CompVersion& callerVersion,
+		const Expression::SymbolSet& liveVars,
+		const VarDefMap& reachDefs,
+		const VarTypeMap& varTypes,
+		VariableMap& varMap,
+		llvm::BasicBlock* pEntryBlock,
+		llvm::BasicBlock* pExitBlock
+	);
+
 	// Method to compile a function call
 	static ValueVector compFunctionCall(
 		Function* pCalleeFunc,

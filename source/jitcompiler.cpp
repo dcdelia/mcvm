@@ -6169,23 +6169,37 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 		{
                         // feval optimization
                         if (trackFevalOrOptCall) {
-                            // determine whether the ParamExpr is a feval or an optimized call
-                            bool trackFevalCall = fevalInfo->isFevalToTrack(const_cast<ParamExpr*>(pParamExpr));
-                            assert(trackFevalCall);
-
-                            return compAndTrackFeval((Function*)pObject,
-				pParamExpr->getArguments(),
-				nargout,
-				pParamExpr,
-				(void*)Interpreter::evalParamExpr,
-				function,
-				version,
-				liveVars,
-				reachDefs,
-				varTypes,
-				varMap,
-				pEntryBlock,
-				pExitBlock);
+                            // determine whether ParamExpr contains a feval or an optimized call
+                            bool isFevalCall = fevalInfo->isFevalToTrack(const_cast<ParamExpr*>(pParamExpr));
+                            if (isFevalCall) {
+                                return compAndTrackFeval((Function*)pObject,
+                                    pParamExpr->getArguments(),
+                                    nargout,
+                                    pParamExpr,
+                                    (void*)Interpreter::evalParamExpr,
+                                    function,
+                                    version,
+                                    liveVars,
+                                    reachDefs,
+                                    varTypes,
+                                    varMap,
+                                    pEntryBlock,
+                                    pExitBlock);
+                            } else {
+                                return compAndTrackOptimizedFeval((Function*)pObject,
+                                    pParamExpr->getArguments(),
+                                    nargout,
+                                    pParamExpr,
+                                    (void*)Interpreter::evalParamExpr,
+                                    function,
+                                    version,
+                                    liveVars,
+                                    reachDefs,
+                                    varTypes,
+                                    varMap,
+                                    pEntryBlock,
+                                    pExitBlock);
+                            }
                         }
 
                         // Compile the function call
@@ -6412,6 +6426,51 @@ void checkDeclaredAndSuppliedFuncCallArgs(
         ss << " Supplied: " << expectedParams << std::endl;
         throw std::runtime_error(ss.str());
     }
+}
+
+/***************************************************************
+* Function: JITCompiler::compAndTrackOptFeval()
+* Purpose : Compile and track an optimized-away feval call
+* Initial : Daniele Cono D'Elia on August 18, 2015
+****************************************************************
+Revisions and bug fixes:
+*/
+JITCompiler::ValueVector JITCompiler::compAndTrackOptimizedFeval(Function* pCalleeFunc,
+	const Expression::ExprVector& arguments, size_t nargout, Expression* pOrigExpr,
+	void* pFallbackFunc, CompFunction& callerFunction, CompVersion& callerVersion,
+	const Expression::SymbolSet& liveVars, const VarDefMap& reachDefs, const VarTypeMap& varTypes,
+	VariableMap& varMap, llvm::BasicBlock* pEntryBlock, llvm::BasicBlock* pExitBlock) {
+
+    // All declared arguments must be supplied (see method)
+    checkDeclaredAndSuppliedFuncCallArgs(arguments, pCalleeFunc);
+
+    // Generate OptimizedFevalInfoForOSR object
+    OSRFeval::OptimizedFevalInfoForOSR *infoForOSR = OSRFeval::createOptimizedFevalInfoForOSR(&callerFunction, &callerVersion);
+    infoForOSR->pExpr = (ParamExpr*)pOrigExpr;
+    infoForOSR->varMap = new OSRFeval::IIRVarMap(); // TODO fix creation :-/
+
+    // Create a copy of current VariableMap
+    for (VariableMap::iterator it = varMap.begin(), end = varMap.end(); it != end; ++it) {
+        SymbolExpr* sym = it->first;
+        Value* v = new Value(it->second.pValue, it->second.objType);
+        infoForOSR->varMap->insert(std::pair<SymbolExpr*, Value*>(sym, v));
+    }
+
+    // TODO: should I force the creation of an environment object at this stage? probably not!
+
+    // store info about current block
+    infoForOSR->block = pEntryBlock;
+    if (pEntryBlock->empty()) {
+        infoForOSR->lastInst = nullptr;
+    } else {
+        std::cerr << "[WARNING] non-empty entry block for optimized feval call!" << std::endl;
+        infoForOSR->lastInst = &pEntryBlock->back();
+    }
+    
+
+    // compile the function call as usual
+    return compFunctionCall(pCalleeFunc, arguments, nargout, pOrigExpr, pFallbackFunc, callerFunction,
+            callerVersion, liveVars, reachDefs, varTypes, varMap, pEntryBlock, pExitBlock);
 }
 
 /***************************************************************
