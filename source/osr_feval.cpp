@@ -890,7 +890,7 @@ void OSRFeval::parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* 
 }
 
 void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
-        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, StateMap::CompCode* compCode) {
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule) {
     llvm::Type* newMode = newVal->pValue->getType();
     llvm::Type* oldMode = oldVal->pValue->getType();
     DataObject::Type newType = newVal->objType;
@@ -901,7 +901,16 @@ void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::
     std::cerr << "OLD MODE: " << JITCompiler::LLVMTypeToString(oldMode) << std::endl;
     std::cerr << "NEW MODE: " << JITCompiler::LLVMTypeToString(newMode) << std::endl;
 
-    llvm::IRBuilder<> builder(Context);
+    if (newMode == oldMode) {
+        std::cerr << "WARNING: requested a cast from UNKNOWN to "
+                << DataObject::getTypeName(newType) << " with same " <<
+                JITCompiler::LLVMTypeToString(oldMode) << " IR type!" << std::endl;
+        M->registerOneToOneValue(oldVal->pValue, newVal->pValue); // no compensation code required!
+        return;
+    }
+
+    StateMap::CompCode* compCode = new StateMap::CompCode();
+    bool compCodeGenerated = false;
 
     if (newMode == llvm::Type::getDoubleTy(Context)) {
         if (newType == DataObject::MATRIX_F64) {
@@ -916,12 +925,18 @@ void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::
             compCode->code->push_back(compVal);
             compCode->value = compVal;
 
-            return;
+            compCodeGenerated = true;
         }
     }
 
-    std::cerr << "Sorry, for the time being I can only convert from UNKNOWN to double" << std::endl;
-    assert(false);
+    if (compCodeGenerated) {
+        StateMap::ValueInfo* valInfo = new StateMap::ValueInfo(compCode);
+        llvm::Value* destVal = newVal->pValue;
+        bpInfo.valueInfoMap.insert(std::pair<llvm::Value*, StateMap::ValueInfo*>(destVal, valInfo));
+    } else {
+        std::cerr << "Sorry, for the time being I can only convert a limited number of type combinations" << std::endl;
+        assert(false);
+    }
 
 }
 
@@ -933,12 +948,9 @@ void OSRFeval::generateTypeConversionCompCode(JITCompiler::Value* oldVal, JITCom
     std::cerr << "--> new type: " << DataObject::getTypeName(newType) << std::endl;
     std::cerr << "    corresponding IR: "; newVal->pValue->dump();
 
-    StateMap::ValueInfoMap &valInfoMap = bpInfo.valueInfoMap;
-    StateMap::CompCode* compCode = new StateMap::CompCode();
-
     switch(oldType) {
         case DataObject::UNKNOWN: {
-            compCodeFromUnknownType(oldVal, newVal, M, bpInfo, currModule, compCode);
+            compCodeFromUnknownType(oldVal, newVal, M, bpInfo, currModule);
         } break;
 
         default: {
@@ -947,7 +959,5 @@ void OSRFeval::generateTypeConversionCompCode(JITCompiler::Value* oldVal, JITCom
         }
     }
 
-    StateMap::ValueInfo* valInfo = new StateMap::ValueInfo(compCode);
-    llvm::Value* destVal = newVal->pValue;
-    valInfoMap.insert(std::pair<llvm::Value*, StateMap::ValueInfo*>(destVal, valInfo));
+
 }

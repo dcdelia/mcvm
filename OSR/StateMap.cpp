@@ -115,9 +115,8 @@ std::vector<Value*> StateMap::getValuesToFetchFromSrcFunction(StateMap::BlockPai
             }
         }
 
-        char errorMsg[256];
-        sprintf(errorMsg, "Could not find mapping information for Value %s", valueToSet->getName().str().c_str());
-        llvm::report_fatal_error(std::string(errorMsg));
+        valueToSet->dump();
+        llvm::report_fatal_error("[getValuesToFetchFromSrcFunction] could not find mapping information for the Value above");
     }
 
     /* The number of duplicates is very likely to be small! So I won't construct a std::set
@@ -170,9 +169,8 @@ std::pair<BasicBlock*, ValueToValueMapTy*> StateMap::createEntryPointForNewDestF
             }
         }
 
-        char errorMsg[256];
-        sprintf(errorMsg, "Could not find mapping information for Value %s", dest_v->getName().str().c_str());
-        llvm::report_fatal_error(std::string(errorMsg));
+        dest_v->dump();
+        llvm::report_fatal_error("[createEntryPointForNewDestFunction] could not find mapping information for the Value above");
     }
 
     // add branch instruction

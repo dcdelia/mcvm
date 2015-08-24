@@ -120,7 +120,7 @@ private:
     static void generateTypeConversionCompCode(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
         StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule);
     static void compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
-        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, StateMap::CompCode* compCode);
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule);
 
     // for debugging purposes
     static bool sanityCheckOnPassedValues(FevalInfoForOSRGen* genInfo, llvm::BasicBlock* srcBlock,

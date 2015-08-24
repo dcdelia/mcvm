@@ -898,7 +898,7 @@ private:
         static llvm::FunctionPassManager* generateFPM(llvm::Module* M);
         static llvm::Function* getLLVMFunctionToCall(llvm::Function* functionToCall, llvm::Module* currentModule);
         static void runFPM(llvm::Function* F);
-        static void runPrintFPM(llvm::Function* F);
+        static void verifyLLVMFunction(llvm::Function* F);
 
         // LLVM Context
         static llvm::LLVMContext* s_Context;

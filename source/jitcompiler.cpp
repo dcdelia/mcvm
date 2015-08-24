@@ -153,13 +153,12 @@ llvm::Function* JITCompiler::getLLVMFunctionToCall(llvm::Function* functionToCal
 * Purpose : Generate a FunctionPassManager for the module
 * Initial : Daniele Cono D'Elia on August 2015
 ****************************************************************
-Revisions and bug fixes:
+Revisions and bug fixes: code verification moved to separate
+method so that IR can be printed when an error occurs.
 */
 llvm::FunctionPassManager* JITCompiler::generateFPM(llvm::Module* M) {
     llvm::FunctionPassManager* FPM = new llvm::FunctionPassManager(M);
 
-    //if (!s_jitFevalOptVar) {
-    FPM->add(llvm::createVerifierPass()); /* DCD: argument was llvm::PrintMessageAction */
     FPM->add(llvm::createCFGSimplificationPass());
     FPM->add(llvm::createPromoteMemoryToRegisterPass());
     FPM->add(llvm::createReassociatePass());
@@ -170,13 +169,27 @@ llvm::FunctionPassManager* JITCompiler::generateFPM(llvm::Module* M) {
     FPM->add(llvm::createInstructionCombiningPass());
     // FPM->add(llvm::createBlockPlacementPass());/* DCD: removed from LLVM as MachineBlockPlacement supercedes it */
     FPM->add(llvm::createCFGSimplificationPass());
-    //}
+
     if (ConfigManager::s_veryVerboseVar || ConfigManager::s_verboseVar) {
         FPM->add(llvm::createPrintFunctionPass(*&llvm::outs(), ""));
     }
     FPM->doInitialization();
 
     return FPM;
+}
+
+/***************************************************************
+* Function: JITCompiler::verifyLLVMFunction()
+* Purpose : Check generated LLVM code for well-formedness
+* Initial : Daniele Cono D'Elia on August 2015
+****************************************************************
+Revisions and bug fixes:
+*/
+void JITCompiler::verifyLLVMFunction(llvm::Function* F) {
+    if (llvm::verifyFunction(*F, &llvm::outs())) {
+        F->dump();
+        throw CompError("Generated IR is broken!");
+    }
 }
 
 /***************************************************************
@@ -197,7 +210,7 @@ void JITCompiler::runFPM(llvm::Function* F) {
         FPM = generateFPM(M);
         s_FunctionPassManagerMap.insert(std::pair<llvm::Module*, llvm::FunctionPassManager*>(M, FPM));
     }
-    //FPM->run(*F);
+    FPM->run(*F);
 }
 
 /***************************************************************
@@ -1196,14 +1209,20 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
         // feval optimization pass
         if (s_jitFevalOptVar) {
             bool updated = OSRFeval::processCompVersion(&compFunction, &compVersion);
-            if (updated && (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar)) {
-                std::cerr << "Function " << compVersion.pLLVMFunc->getName().str()
-                        << " has been instrumented with OSR points for feval optimization" << std::endl;
+            if (updated) {
+                if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+                    std::cerr << "Function " << compVersion.pLLVMFunc->getName().str() <<
+                        " has been instrumented with OSR points for feval optimization" << std::endl;
+                }
+            } else {
+                verifyLLVMFunction(pFuncObj);
+                runFPM(pFuncObj); // TODO
             }
+        } else {
+            // Optimize IR
+            verifyLLVMFunction(pFuncObj);
+            runFPM(pFuncObj);
         }
-
-        // Optimize IR
-        runFPM(pFuncObj);
 
         const std::string compiledFunctionName = pFuncObj->getName().str();
 
@@ -2806,7 +2825,8 @@ void JITCompiler::compWrapperFunc(
 		}
 	}
 
-        // Run the optimization passes on the function
+        // Verify IR and run the optimization passes on the function
+        verifyLLVMFunction(pFuncObj);
         runFPM(pFuncObj);
 
         const std::string wrapperName = pFuncObj->getName().str();
