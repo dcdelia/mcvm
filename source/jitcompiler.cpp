@@ -197,7 +197,7 @@ void JITCompiler::runFPM(llvm::Function* F) {
         FPM = generateFPM(M);
         s_FunctionPassManagerMap.insert(std::pair<llvm::Module*, llvm::FunctionPassManager*>(M, FPM));
     }
-    FPM->run(*F);
+    //FPM->run(*F);
 }
 
 /***************************************************************
@@ -6138,7 +6138,13 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 
         FevalAnalysisInfo* fevalInfo = const_cast<FevalAnalysisInfo*>(version.pFevalInfo);
 
+        // determine whether ParamExpr contains a feval or an optimized call
         bool trackFevalOrOptCall = s_jitFevalOptVar && fevalInfo->containsParamExprsToTrack;
+        bool isFevalCall = trackFevalOrOptCall && fevalInfo->isFevalToTrack(const_cast<ParamExpr*>(pParamExpr));
+        if (!isFevalCall) {
+            trackFevalOrOptCall = trackFevalOrOptCall && fevalInfo->isOptimizedCallToTrack(const_cast<ParamExpr*>(pParamExpr));
+        }
+        // TODO compare pSymbol against feval!!!
 
 	// Lookup the symbol in the reaching definitions
 	VarDefMap::const_iterator symDefItr = reachDefs.find(pSymbol);
@@ -6169,8 +6175,6 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 		{
                         // feval optimization
                         if (trackFevalOrOptCall) {
-                            // determine whether ParamExpr contains a feval or an optimized call
-                            bool isFevalCall = fevalInfo->isFevalToTrack(const_cast<ParamExpr*>(pParamExpr));
                             if (isFevalCall) {
                                 return compAndTrackFeval((Function*)pObject,
                                     pParamExpr->getArguments(),
@@ -6221,7 +6225,10 @@ JITCompiler::ValueVector JITCompiler::compParamExpr(
 		}
 	}
 
-        assert(!trackFevalOrOptCall);
+        if (trackFevalOrOptCall) {
+            std::cerr << "FATAL ERROR at ParamExpr " << pParamExpr->toString() << std::endl;
+            assert(!trackFevalOrOptCall);
+        }
 
 	//std::cout << "Looking up symbol type for: " << pSymbol->toString() << std::endl;
 

@@ -26,7 +26,9 @@
 #include <llvm/PassManager.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/CFG.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/IR/CFG.h>
 
 // static fields
 OSRFeval::CompPairToOSRFevalInfoMap OSRFeval::CompOSRInfoMap;
@@ -152,10 +154,12 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
     CompOSRCtrlFunMap.insert(std::pair<CompPair, LLVMUtils::ClonedFunc>(funPair, std::move(clonedFunPair)));
 
     // simplify CFG (too many BBs at this stage)
+    /*
     llvm::FunctionPassManager FPM(currModule);
     FPM.add(llvm::createCFGSimplificationPass());
     FPM.doInitialization();
     FPM.run(*currFunction);
+    */
 
     /* Process each candidate location for OSR point insertion */
     std::vector<FevalInfoForOSR*> &fevalInfoForOSRVec = CompOSRInfoMap[funPair];
@@ -190,10 +194,10 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             std::cerr << "Available Value* from VarMap:" << std::endl;
             for (IIRVarMap::iterator it = info->varMap->begin(), end = info->varMap->end(); it != end; ++it) {
                 JITCompiler::Value *jitVal = it->second;
-                std::cerr << "[" << it->first->getSymName() << "] " << (void*)jitVal->pValue << std::endl;
+                std::cerr << "[" << it->first->getSymName() << "] " << (void*)jitVal->pValue
+                    << " of type: " << DataObject::getTypeName(jitVal->objType) << std::endl;
             }
 
-            /*
             std::cerr << "Info from FevalInfoForOSR:" << std::endl;
             std::cerr << "arguments:" << std::endl;
             for (auto &pair: info->argsInArrayObj) {
@@ -201,7 +205,6 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             }
             std::cerr << "" << std::endl;
             std::cerr << "call to interpreter: " << (void*)info->interpreterCallInst << std::endl;
-            */
 
             std::cerr << "environment: " << (void*)pCompVersion->pEnvObject << std::endl;
             // Note that &mcvm::stdlib::feval is the first arg for Interpreter::callFunction()
@@ -270,14 +273,68 @@ OSRLibrary::OSRCond OSRFeval::generateDefaultOSRCond() {
     return cond;
 }
 
-bool OSRFeval::sanityCheckOnPassedValues(OSRFeval::FevalInfoForOSRGen* genInfo) {
+void OSRFeval::printInfoOnAvailableValues(OSRFeval::IIRVarMap &varMap, llvm::Function* fun, llvm::Value* env) {
+    std::cerr << "Tracked variables for function " << fun->getName().str() << ":" << std::endl;
+
+    llvm::Function::arg_iterator argIt = fun->arg_begin();
+    llvm::Value* arg1 = argIt++;
+    llvm::Value* arg2 = argIt++;
+
+    std::cerr << "[env] "; env->dump();
+    std::cerr << "[arg1] "; arg1->dump();
+    std::cerr << "[arg2] "; arg2->dump();
+
+    for (auto &pair: varMap) {
+        JITCompiler::Value* jitVal = pair.second;
+        std::cerr << "<" << pair.first->getSymName() << "> of type " << DataObject::getTypeName(jitVal->objType) << std::endl;
+        std::cerr << "--> "; jitVal->pValue->dump();
+    }
+
+}
+
+void OSRFeval::computePredecessorsForBlock(llvm::BasicBlock* B, std::set<llvm::BasicBlock*> &predecessors) {
+    for (llvm::pred_iterator it = llvm::pred_begin(B), end = llvm::pred_end(B); it != end; ++it) {
+        llvm::BasicBlock* currBlock = *it;
+        if (predecessors.count(currBlock) == 0) {
+            predecessors.insert(currBlock);
+            computePredecessorsForBlock(currBlock, predecessors);
+        }
+    }
+
+}
+
+bool OSRFeval::hasNoPrevUses(llvm::Value* v, std::set<llvm::BasicBlock*> &predecessors) {
+    for (llvm::User *U: v->users()) {
+        if (llvm::Instruction* I = llvm::dyn_cast<llvm::Instruction>(U)) {
+            llvm::BasicBlock* B = I->getParent();
+            if (predecessors.count(B) != 0) {
+                if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+                    std::cerr << "ERROR: Value " << v->getName().str() << " is used in previous istruction: "; I->dump();
+                }
+                return false;
+            } else if (ConfigManager::s_veryVerboseVar) {
+                std::cerr << "Value " << v->getName().str() << " is used in later istruction: "; I->dump();
+            }
+        }
+    }
+
+    return true;
+}
+
+bool OSRFeval::sanityCheckOnPassedValues(OSRFeval::FevalInfoForOSRGen* genInfo, llvm::BasicBlock* srcBlock,
+        llvm::Function* srcFun) {
     bool error = false;
+
+    std::set<llvm::BasicBlock*> predecessors;
+    computePredecessorsForBlock(srcBlock, predecessors);
+    bool inLoop = (predecessors.count(srcBlock) != 0);
 
     std::cerr << "Analyzing values passed at the OSR point..." << std::endl;
     FevalInfoForOSR* infoAtIIR = genInfo->fevalInfoForOSR;
     for (size_t index = 0, size = genInfo->passedValues->size(); index < size; ++index) {
         llvm::Value* v = (*(genInfo->passedValues))[index];
-        std::cerr << "[" << index << "] with address " << (void*)v << std::endl;
+        //std::cerr << "[" << index << "] with address " << (void*)v << std::endl;
+        std::cerr << "[" << index << "] with address " << (void*)v << " - "; v->dump();
         std::cerr << "--> ";
         // try to match against environment or arguments
         if (v == genInfo->environment) {
@@ -298,8 +355,28 @@ bool OSRFeval::sanityCheckOnPassedValues(OSRFeval::FevalInfoForOSRGen* genInfo) 
                     break;
                 }
                 if (++it == end) {
-                    std::cerr << "UNABLE TO MATCH VALUE!!!" << std::endl;
-                    error = true;
+                    if (llvm::isa<llvm::AllocaInst>(v)) {
+                        if (hasNoPrevUses(v, predecessors)) {
+                            std::cerr << "alloca with no previous uses!" << std::endl;
+                        } else if (inLoop) {
+                            predecessors.erase(srcBlock);
+                            if (hasNoPrevUses(v, predecessors)) {
+                                // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
+                                std::cerr << "WARNING: alloca referenced in current block (we are in a loop)!" << std::endl;
+                            } else {
+                                std::cerr << "ERROR: alloca instruction already referenced in a predecessor block" << std::endl;
+                                error = true;
+                            }
+                            predecessors.insert(srcBlock);
+                        } else {
+                            std::cerr << "ERROR: alloca instruction already referenced in a predecessor block" << std::endl;
+                            error = true;
+                        }
+                    } else {
+                        std::cerr << "ERROR: UNABLE TO MATCH VALUE!!!" << std::endl;
+                        v->dump();
+                        error = true;
+                    }
                 }
             }
         }
@@ -360,7 +437,9 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     }
 
     // check if we have all the required information about values
-    assert(sanityCheckOnPassedValues(genInfo));
+    bool safe = sanityCheckOnPassedValues(genInfo, srcB, srcFun);
+    if (!safe) srcFun->dump();
+    assert(safe);
 
     // generate IIR function where feval calls are replaced with direct calls
     OptimizedFunPair optPair = generateIIRFunc((ProgFunction*)genInfo->pCompFunction->pProgFunc, calledIIRFunc, genInfo);
@@ -372,6 +451,12 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     CompPair &newCompPair = IRPair.second;
     llvm::Module* modForNewFun = newFun->getParent();
 
+    // let's try this one... :-(
+    std::cerr << "Verifying original function..." << std::endl;
+    llvm::verifyFunction(*srcFun, &llvm::outs());
+    std::cerr << "Verifying optimized function..." << std::endl;
+    llvm::verifyFunction(*newFun, &llvm::outs());
+
     // generate continuation function
     llvm::Function* OSRDestFun = nullptr;
 
@@ -381,7 +466,7 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
 
     /* Generate state mapping and continuation function */
     std::pair<StateMap*, llvm::Function*> mapPair = generateContinuationFunction(srcFun,
-        srcB, newFun, newCompPair, genInfo, pOSRContinuationExpr);
+        srcB, newFun, modForNewFun, newCompPair, genInfo, pOSRContinuationExpr);
 
     //StateMap* M = mapPair.first;
     OSRDestFun = mapPair.second;
@@ -391,11 +476,11 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
         OSRDestFun->dump();
     }
 
-    // insert continuation function into LLVM Module
-    modForNewFun->getFunctionList().push_back(OSRDestFun);
-
     // now we can perform verification of OSRDestFun
-    llvm::verifyFunction(*OSRDestFun, &llvm::outs());
+    if (llvm::verifyFunction(*OSRDestFun, &llvm::outs())) {
+        OSRDestFun->dump();
+        OSRDestFun->viewCFGOnly();
+    }
 
     // perform McVM default optimizations
     JITCompiler::runFPM(OSRDestFun);
@@ -417,8 +502,8 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
 }
 
 std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llvm::Function* origFunc,
-        llvm::BasicBlock* origBlock, llvm::Function* newFunc, OSRFeval::CompPair &newCompPair,
-        OSRFeval::FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr) {
+        llvm::BasicBlock* origBlock, llvm::Function* newFunc, llvm::Module* modForNewFun,
+        OSRFeval::CompPair &newCompPair, OSRFeval::FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr) {
 
     FevalInfoForOSR* infoAtOldIIR = OSRGenInfo->fevalInfoForOSR;
     OptimizedFevalInfoForOSR *optInfo = nullptr;
@@ -446,12 +531,29 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
     llvm::Value* arg1 = argIt++;
     llvm::Value* arg2 = argIt++;
 
-    std::cerr << "Destination block: "; newBlock->dump();
+    // just for debugging purposes
+    if (ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Destination block: "; newBlock->dump();
+
+        std::cerr << "Values to set:" << std::endl;
+        for (llvm::Value* v: *valuesToSet) {
+            v->dump();
+        }
+
+        printInfoOnAvailableValues(*optInfo->varMap, newFunc, environment);
+    }
 
     std::map<JITCompiler::Value*, JITCompiler::Value*> IIRValMap;
     // TODO check default initialization value
     std::pair<llvm::Value*, llvm::Value*> inArgPair(nullptr, nullptr), outArgPair(nullptr, nullptr);
     std::pair<llvm::Value*, llvm::Value*> envPair(nullptr, nullptr);
+
+    // info to reconstruct alloca instructions
+    std::set<llvm::BasicBlock*> predecessors;
+    computePredecessorsForBlock(newBlock, predecessors);
+    bool inLoop = (predecessors.count(newBlock) != 0);
+    std::vector<llvm::AllocaInst*> allocasToAdd;
+
     for (llvm::Value* valueToSet: *valuesToSet) { // TODO change order of if statements?
         if (valueToSet == arg1) {
             inArgPair.first = arg1;
@@ -475,26 +577,54 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
                     break;
                 }
             }
-            assert(newIIRVal != nullptr);
-
-            // look for a match in the VarMap of the old function
-            JITCompiler::Value* oldIIRVal = nullptr;
-            for (IIRVarMap::iterator it = infoAtOldIIR->varMap->begin(),
-                    end = infoAtOldIIR->varMap->end(); it != end; ++it) {
-                if (it->first == newSym) { // pointer comparison for SymbolExpr (see class)
-                    oldIIRVal = it->second;
-                    break;
+            if (newIIRVal == nullptr) {
+                if (llvm::AllocaInst* alloca = llvm::dyn_cast<llvm::AllocaInst>(valueToSet)) {
+                    if (hasNoPrevUses(valueToSet, predecessors)) {
+                        //std::cerr << "### RECONSTRUCT AN ALLOCA INST! ###" << std::endl;
+                        allocasToAdd.push_back(alloca);
+                    } else if (inLoop) {
+                        predecessors.erase(newBlock);
+                        if (hasNoPrevUses(valueToSet, predecessors)) {
+                            // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
+                            std::cerr << "### WARNING: RECONSTRUCT AN ENDANGERED ALLOCA INST! ###" << std::endl;
+                            allocasToAdd.push_back(alloca);
+                            valueToSet->dump();
+                        } else {
+                            std::cerr << "ERROR: alloca instruction already referenced in a predecessor block" << std::endl;
+                            valueToSet->dump();
+                            assert(false);
+                        }
+                        predecessors.insert(newBlock);
+                    } else {
+                        std::cerr << "ERROR: alloca instruction already referenced in a predecessor block" << std::endl;
+                        valueToSet->dump();
+                        assert(false);
+                    }
+                } else {
+                    std::cerr << "FATAL ERROR - missing information for value:" << std::endl;
+                    valueToSet->dump();
+                    assert(false);
                 }
-            }
-            assert(oldIIRVal != nullptr);
+            } else {
+                // look for a match in the VarMap of the old function
+                JITCompiler::Value* oldIIRVal = nullptr;
+                for (IIRVarMap::iterator it = infoAtOldIIR->varMap->begin(),
+                        end = infoAtOldIIR->varMap->end(); it != end; ++it) {
+                    if (it->first == newSym) { // pointer comparison for SymbolExpr (see class)
+                        oldIIRVal = it->second;
+                        break;
+                    }
+                }
+                assert(oldIIRVal != nullptr);
 
-            IIRValMap[newIIRVal] = oldIIRVal;
+                IIRValMap[newIIRVal] = oldIIRVal;
+            }
         }
     }
 
     // at this point all IIR values have a match!
-
     StateMap *M = new StateMap(origFunc, newFunc);
+    StateMap::BlockPair blockPair(origBlock, newBlock);
 
     // let's process arguments and environment first
     if (inArgPair.first != nullptr) {
@@ -510,6 +640,23 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
         M->registerOneToOneValue(envPair.second, envPair.first);
     }
 
+    // add compensation code for alloca instructions
+    StateMap::BlockPairInfo& bpInfo = M->getOrCreateMapBlockPairInfo(blockPair);
+    StateMap::ValueInfoMap &valInfoMap = bpInfo.valueInfoMap;
+    for (llvm::AllocaInst* destAlloca: allocasToAdd) {
+        llvm::Value* cloneAlloca = destAlloca->clone();
+        if (destAlloca->hasName()) cloneAlloca->setName(destAlloca->getName());
+        StateMap::CompCode* compCode = new StateMap::CompCode();
+        compCode->args = nullptr;
+        compCode->code = new llvm::SmallVector<llvm::Value*, 1>;
+        compCode->code->push_back(cloneAlloca);
+        compCode->value = cloneAlloca;
+
+        StateMap::ValueInfo* valInfo = new StateMap::ValueInfo(compCode);
+        llvm::Value* destVal = llvm::cast<llvm::Value>(destAlloca);
+        valInfoMap.insert(std::pair<llvm::Value*, StateMap::ValueInfo*>(destVal, valInfo));
+    }
+
     // now we can process IIR variables [and add compensation code where needed]
     for (std::map<JITCompiler::Value*, JITCompiler::Value*>::iterator it = IIRValMap.begin(),
             end = IIRValMap.end(); it != end; ++it) {
@@ -517,7 +664,14 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
         JITCompiler::Value* oldVal = it->second;
 
         if (newVal->objType != oldVal->objType) {
-            assert(false); // TODO implement compensation code!
+            for (IIRVarMap::iterator thisIt = optInfo->varMap->begin(), thisEnd = optInfo->varMap->end();
+                    thisIt != thisEnd; ++thisIt) {
+                if (thisIt->second == newVal) {
+                    std::cerr << "Type mismatch detected for variable " << thisIt->first->getSymName() << std::endl;
+                    break;
+                }
+            }
+            generateTypeConversionCompCode(oldVal, newVal, M, bpInfo, modForNewFun);
         } else {
             M->registerOneToOneValue(oldVal->pValue, newVal->pValue);
         }
@@ -526,11 +680,13 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
     M->registerCorrespondingBlock(origBlock, newBlock);
 
     // at this point we can generate the continuation function
-    StateMap::BlockPair blockPair(origBlock, newBlock);
     std::string OSRDestFunName = (newFunc->getName().str()).append("DestOSR");
     std::vector<llvm::Value*> *passedValues = OSRGenInfo->passedValues;
     llvm::Function* OSRDestFun = OSRLibrary::generateOSRDestFun(*JITCompiler::s_Context ,*origFunc,
             *newFunc, blockPair, *passedValues, *M, OSRDestFunName);
+
+    // insert continuation function into LLVM Module
+    modForNewFun->getFunctionList().push_back(OSRDestFun);
 
     return std::pair<StateMap*, llvm::Function*>(M, OSRDestFun);
 }
@@ -731,4 +887,67 @@ void OSRFeval::parseClonedFunForIIRMapping(StmtSequence* origSeq, StmtSequence* 
             }
         }
     }
+}
+
+void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, StateMap::CompCode* compCode) {
+    llvm::Type* newMode = newVal->pValue->getType();
+    llvm::Type* oldMode = oldVal->pValue->getType();
+    DataObject::Type newType = newVal->objType;
+
+    llvm::LLVMContext &Context = *JITCompiler::s_Context;
+
+    assert(oldMode == llvm::Type::getInt8PtrTy(Context));
+    std::cerr << "OLD MODE: " << JITCompiler::LLVMTypeToString(oldMode) << std::endl;
+    std::cerr << "NEW MODE: " << JITCompiler::LLVMTypeToString(newMode) << std::endl;
+
+    llvm::IRBuilder<> builder(Context);
+
+    if (newMode == llvm::Type::getDoubleTy(Context)) {
+        if (newType == DataObject::MATRIX_F64) {
+            const JITCompiler::NativeFunc& nativeFunc = JITCompiler::s_nativeMap[(void*)MatrixF64Obj::getScalarVal];
+            llvm::Function* functionToCall = JITCompiler::getLLVMFunctionToCall(nativeFunc.pLLVMFunc, currModule);
+            JITCompiler::LLVMValueVector args(1, oldVal->pValue);
+            llvm::CallInst* compVal = llvm::CallInst::Create(functionToCall, args, "ccUKtoMF64");
+
+            compCode->args = new llvm::SmallVector<llvm::Value*, 1>;
+            compCode->args->push_back(oldVal->pValue);
+            compCode->code = new llvm::SmallVector<llvm::Value*, 1>;
+            compCode->code->push_back(compVal);
+            compCode->value = compVal;
+
+            return;
+        }
+    }
+
+    std::cerr << "Sorry, for the time being I can only convert from UNKNOWN to double" << std::endl;
+    assert(false);
+
+}
+
+void OSRFeval::generateTypeConversionCompCode(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule) {
+    DataObject::Type oldType = oldVal->objType, newType = newVal->objType;
+    std::cerr << "--> old type: " << DataObject::getTypeName(oldType) << std::endl;
+    std::cerr << "    corresponding IR: "; oldVal->pValue->dump();
+    std::cerr << "--> new type: " << DataObject::getTypeName(newType) << std::endl;
+    std::cerr << "    corresponding IR: "; newVal->pValue->dump();
+
+    StateMap::ValueInfoMap &valInfoMap = bpInfo.valueInfoMap;
+    StateMap::CompCode* compCode = new StateMap::CompCode();
+
+    switch(oldType) {
+        case DataObject::UNKNOWN: {
+            compCodeFromUnknownType(oldVal, newVal, M, bpInfo, currModule, compCode);
+        } break;
+
+        default: {
+            std::cerr << "Sorry, this part has not been fully implemented yet :-)" << std::endl;
+            assert(false);
+        }
+    }
+
+    StateMap::ValueInfo* valInfo = new StateMap::ValueInfo(compCode);
+    llvm::Value* destVal = newVal->pValue;
+    valInfoMap.insert(std::pair<llvm::Value*, StateMap::ValueInfo*>(destVal, valInfo));
 }

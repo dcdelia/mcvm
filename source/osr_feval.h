@@ -96,7 +96,7 @@ public:
     static CompPairToCtrlFun    CompOSRCtrlFunMap;
 
     static CompPairToOSROptInfoMap CompOSROptInfoMap;
-    
+
     static CodeCacheMap CodeCache;
 
 private:
@@ -114,8 +114,20 @@ private:
         ProgFunction* pFunc, JITCompiler::CompFunction* pOldCompFunc, JITCompiler::CompVersion* pOldCompVersion,
         std::map<ParamExpr*, ParamExpr*> &optimizedParamExprMap);
     static std::pair<StateMap*, llvm::Function*> generateContinuationFunction(llvm::Function* origFunc, llvm::BasicBlock* origBlock,
-        llvm::Function* newFunc, CompPair &newCompPair, FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr);
-    static bool sanityCheckOnPassedValues(FevalInfoForOSRGen* genInfo);
+        llvm::Function* newFunc, llvm::Module* modForNewFun, CompPair &newCompPair, FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr);
+
+    // compensation code
+    static void generateTypeConversionCompCode(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule);
+    static void compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, StateMap::CompCode* compCode);
+
+    // for debugging purposes
+    static bool sanityCheckOnPassedValues(FevalInfoForOSRGen* genInfo, llvm::BasicBlock* srcBlock,
+        llvm::Function* srcFun);
+    static void printInfoOnAvailableValues(OSRFeval::IIRVarMap &varMap, llvm::Function* fun, llvm::Value* env);
+    static bool hasNoPrevUses(llvm::Value* v, std::set<llvm::BasicBlock*> &predecessors);
+    static void computePredecessorsForBlock(llvm::BasicBlock* B, std::set<llvm::BasicBlock*> &predecessors);
 };
 
 #endif

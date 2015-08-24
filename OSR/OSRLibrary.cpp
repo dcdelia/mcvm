@@ -465,10 +465,11 @@ OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(LLVMContext& Context, OSRLibrary::
         tmpMod.getFunctionList().push_back(newSrcFun);
         verifyAux(newSrcFun, &errStream, &preventOptimize);
 
-        FunctionPassManager FPM(&tmpMod);
-        FPM.add(createCFGSimplificationPass());
-        FPM.doInitialization();
-        FPM.run(*newSrcFun);
+        /* TODO: this can disrupt existing Value objects*/
+        //FunctionPassManager FPM(&tmpMod);
+        //FPM.add(createCFGSimplificationPass());
+        //FPM.doInitialization();
+        //FPM.run(*newSrcFun);
 
         newSrcFun->removeFromParent();
         stub->removeFromParent();
@@ -478,10 +479,11 @@ OSRLibrary::OSRPair OSRLibrary::insertOpenOSR(LLVMContext& Context, OSRLibrary::
 
         verifyAux(src, &errStream, &preventOptimize);
 
-        FunctionPassManager FPM(parentForSrc);
-        FPM.add(createCFGSimplificationPass());
-        FPM.doInitialization();
-        FPM.run(*src);
+        /* TODO: this can disrupt existing Value objects*/
+        //FunctionPassManager FPM(parentForSrc);
+        //FPM.add(createCFGSimplificationPass());
+        //FPM.doInitialization();
+        //FPM.run(*src);
     }
 
     if (valuesToTransfer == nullptr) {
