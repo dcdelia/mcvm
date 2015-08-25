@@ -187,7 +187,8 @@ Revisions and bug fixes:
 */
 void JITCompiler::verifyLLVMFunction(llvm::Function* F) {
     if (llvm::verifyFunction(*F, &llvm::outs())) {
-        F->dump();
+        std::cerr << "Full content of the module for the function:" << std::endl;
+        F->getParent()->dump();
         throw CompError("Generated IR is broken!");
     }
 }
@@ -472,7 +473,7 @@ void JITCompiler::initialize()
 	regNativeFunc("MatrixC128Obj::scalarArrayOp<OrOp>", (void*)(MatrixC128Obj::F64_SCALAR_LOGIC_OP_FUNC)MatrixC128Obj::lhsScalarArrayOp<OrOp<Complex128>, bool, float64>, VOID_PTR_TYPE, f64ScalarOpArgs, initModule);
 	regNativeFunc("LogicalArrayObj::binArrayOp<OrOp>", (void*)(LogicalArrayObj::MATRIX_LOGIC_OP_FUNC)LogicalArrayObj::binArrayOp<OrOp<bool>, bool>, VOID_PTR_TYPE, evalArgs, initModule);
 	regNativeFunc("LogicalArrayObj::scalarArrayOp<OrOp>", (void*)(LogicalArrayObj::F64_SCALAR_LOGIC_OP_FUNC)LogicalArrayObj::lhsScalarArrayOp<OrOp<bool>, bool, float64>, VOID_PTR_TYPE, f64ScalarOpArgs, initModule);
-	regNativeFunc("CharArrayObj::binArrayOp<OrOp>", (void*)(CharArrayObj::MATRIX_LOGIC_OP_FUNC)CharArrayObj::binArrayOp<OrOp<char>, bool>, VOID_PTR_TYPE, evalArgs, initModule);
+        regNativeFunc("CharArrayObj::binArrayOp<OrOp>", (void*)(CharArrayObj::MATRIX_LOGIC_OP_FUNC)CharArrayObj::binArrayOp<OrOp<char>, bool>, VOID_PTR_TYPE, evalArgs, initModule);
 	regNativeFunc("CharArrayObj::scalarArrayOp<OrOp>", (void*)(CharArrayObj::F64_SCALAR_LOGIC_OP_FUNC)CharArrayObj::lhsScalarArrayOp<OrOp<char>, bool, float64>, VOID_PTR_TYPE, f64ScalarOpArgs, initModule);
 	regNativeFunc("matrixLogicOp<OrOp>", (void*)(MATRIX_BINOP_FUNC)matrixLogicOp<OrOp>, VOID_PTR_TYPE, evalArgs, initModule);
 	regNativeFunc("scalarLogicOp<OrOp>", (void*)(SCALAR_BINOP_FUNC)lhsScalarLogicOp<OrOp, float64>, VOID_PTR_TYPE, f64ScalarOpArgs, initModule);
@@ -5279,8 +5280,8 @@ JITCompiler::Value JITCompiler::compBinaryExpr(
 * Purpose : Generate code for binary expression operations
 * Initial : Maxime Chevalier-Boisvert on June 1, 2009
 ****************************************************************
-Revisions and bug fixes: Improved printing of LLVM types by
-Daniele Cono D'Elia, August 2015.
+Revisions and bug fixes: Bug fixes for boolean ops & improved
+printing of LLVM types by Daniele Cono D'Elia, August 2015.
 */
 JITCompiler::Value JITCompiler::compBinaryOp(
 	Expression* pLeftExpr,
@@ -5716,15 +5717,28 @@ JITCompiler::Value JITCompiler::compBinaryOp(
 		// NOTE: should not convert float values to booleans before operating on them
 		if (leftVal.objType == DataObject::LOGICALARRAY && rightVal.objType == DataObject::LOGICALARRAY)
 		{
-			// If a boolean computation path is specified
+                    // If a boolean computation path is specified
 			if (pRScalarFuncBool)
 			{
-				// Convert the right value to the boolean (int1) storage mode
+                                /* DCD: original code was buggy as an i1 Value was passed
+                                 * as a second argument to a function expecting a double!
+                                 * Bug identified for LogicalArrayObj::scalarArrayOp<OrOp>
+                                 * and for AndOp version too, both have args (i8*, double)
+                                 *
+                                 * // Convert the right value to the boolean (int1) storage mode
+                                 * llvm::Value* pRightVal = changeStorageMode(
+                                 * 	irBuilder,
+                                 * 	rightVal.pValue,
+                                 *      rightVal.objType,
+                                 * 	llvm::Type::getInt1Ty(*s_Context)
+                                 * ); */
+
+                                // Convert the right value to the double storage mode
 				llvm::Value* pRightVal = changeStorageMode(
 					irBuilder,
 					rightVal.pValue,
 					rightVal.objType,
-					llvm::Type::getInt1Ty(*s_Context)
+					llvm::Type::getDoubleTy(*s_Context)
 				);
 
 				// Create an object for the output value
