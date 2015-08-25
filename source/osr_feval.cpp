@@ -632,8 +632,23 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
         M->registerOneToOneValue(inArgPair.second, inArgPair.first);
     }
     if (outArgPair.first != nullptr) {
-        assert (outArgPair.first->getType() == outArgPair.second->getType()); // TODO?
-        M->registerOneToOneValue(outArgPair.second, outArgPair.first);
+        //assert (outArgPair.first->getType() == outArgPair.second->getType()); // TODO?
+        llvm::Type *oldMode = outArgPair.second->getType();
+        llvm::Type *newMode = outArgPair.first->getType();
+        if (oldMode != newMode) { // TODO check also IIR type!
+            std::cerr << "Type mismatch for LLVM output argument!" << std::endl;
+            std::cerr << "OLD MODE: " << JITCompiler::LLVMTypeToString(oldMode) << std::endl;
+            std::cerr << "NEW MODE: " << JITCompiler::LLVMTypeToString(newMode) << std::endl;
+            llvm::FunctionType* oldFTy = origFunc->getFunctionType();
+            llvm::FunctionType* newFTy = newFunc->getFunctionType();
+            std::cerr << "OLD function type:" << std::endl;
+            oldFTy->dump();
+            std::cerr << "NEW function type:" << std::endl;
+            newFTy->dump();
+            assert(false);
+        } else {
+            M->registerOneToOneValue(outArgPair.second, outArgPair.first);
+        }
     }
     if (envPair.first != nullptr) {
         assert(envPair.second != nullptr); // TODO: can the environment be missing? can I still create it?
@@ -801,6 +816,11 @@ std::pair<llvm::Function*, OSRFeval::CompPair> OSRFeval::generateIRforFunction(P
 	compVersion.pArrayCopyInfo = (const ArrayCopyAnalysisInfo*)AnalysisManager::requestInfo(
             &ArrayCopyElim::computeArrayCopyElim, pFunction, compFunction.pFuncBody, compVersion.inArgTypes);
     }
+
+    // hack: force the parameter types at exit to be the same as in the original function!
+    TypeInfoMap::const_iterator oldTypeInfoItr = pOldCompVersion->pTypeInferInfo->postTypeMap.find(pOldCompFunc->pFuncBody);
+    TypeInferInfo* newTypeInferInfo = const_cast<TypeInferInfo*>(compVersion.pTypeInferInfo);
+    newTypeInferInfo->postTypeMap[compFunction.pFuncBody] = oldTypeInfoItr->second;
 
     // feval analysis should be treated separately as we have to track optimized expressions
     FevalAnalysisInfo* fevalAnalysisInfo = const_cast<FevalAnalysisInfo*>( (const FevalAnalysisInfo*)
