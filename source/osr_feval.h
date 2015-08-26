@@ -101,6 +101,7 @@ public:
 
 private:
     typedef std::pair<ProgFunction*, std::map<ParamExpr*, ParamExpr*>> OptimizedFunPair;
+    typedef std::pair<JITCompiler::Value*, JITCompiler::Value*> JITValPair;
     static LocForOSRPoints computeLocationsForOSRPoints(FevalAnalysisInfo* analysisInfo);
     static LocForOSRPoints& getLocationsForOSRPoints(CompPair funPair);
 
@@ -117,10 +118,12 @@ private:
         llvm::Function* newFunc, llvm::Module* modForNewFun, CompPair &newCompPair, FevalInfoForOSRGen* OSRGenInfo, ParamExpr* pExpr);
 
     // compensation code
-    static void generateTypeConversionCompCode(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
-        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule);
+    static void generateTypeConversionCompCode(SymbolExpr* sym, JITValPair& valPair,
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, llvm::Value* oldEnv);
     static void compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
         StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule);
+    static void compCodeForMissingVal(SymbolExpr* sym, JITValPair& valPair,
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, llvm::Value* oldEnv);
 
     // for debugging purposes
     static bool sanityCheckOnPassedValues(FevalInfoForOSRGen* genInfo, llvm::BasicBlock* srcBlock,

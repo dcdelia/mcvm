@@ -188,7 +188,13 @@ Revisions and bug fixes:
 void JITCompiler::verifyLLVMFunction(llvm::Function* F) {
     if (llvm::verifyFunction(*F, &llvm::outs())) {
         std::cerr << "Full content of the module for the function:" << std::endl;
-        F->getParent()->dump();
+        if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+            if (F->getParent() != nullptr) {
+                F->getParent()->dump(); // dump the whole module
+            } else {
+                F->dump();
+            }
+        }
         throw CompError("Generated IR is broken!");
     }
 }
@@ -6540,6 +6546,14 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
         infoForOSR->varMap->insert(std::pair<SymbolExpr*, Value*>(sym, v));
     }
 
+    // print IIR live variables for debugging
+    if (ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Live variables according to IIR:" << std::endl;
+        for (SymbolExpr* s: liveVars) {
+            std::cerr << "--> " << s->getSymName() << std::endl;
+        }
+    }
+
     // Add the callee function to the callee set
     callerFunction.callees.insert(pCalleeFunc);
 
@@ -6678,6 +6692,21 @@ JITCompiler::ValueVector JITCompiler::compAndTrackFeval(Function* pCalleeFunc,
             // Get the optimal storage mode for the value
             storeModes[i] = getStorageMode(exprTypes[i], objTypes[i]);
 	}
+    }
+
+    // print updated VarMap for debugging
+    if (ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Updated VarMap before getArrayValues:" << std::endl;
+        for (VariableMap::iterator it = varMap.begin(), end = varMap.end(); it != end; ++it) {
+            SymbolExpr* sym = it->first;
+            Value* v = new Value(it->second.pValue, it->second.objType);
+            std::cerr << "--> " << sym->getSymName() << " with LLVM Value " << std::endl;
+            if (v->pValue == nullptr) {
+                std::cerr << "nullptr" << std::endl;
+            }  else {
+                v->pValue->dump();
+            }
+        }
     }
 
     // Extract the output values from the array object

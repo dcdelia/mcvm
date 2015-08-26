@@ -29,6 +29,7 @@
 #include <llvm/IR/CFG.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/IR/CFG.h>
+#include <llvm/ExecutionEngine/GenericValue.h>
 
 // static fields
 OSRFeval::CompPairToOSRFevalInfoMap OSRFeval::CompOSRInfoMap;
@@ -257,7 +258,7 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
                                             profVal, generator, true, currFunction->getName(), valuesToTransfer);
 
         if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
-            //retOSRPair.first->dump(); // updated currFunction
+            retOSRPair.first->dump(); // updated currFunction
             retOSRPair.second->dump(); // generated stub
         }
     }
@@ -309,7 +310,7 @@ bool OSRFeval::hasNoPrevUses(llvm::Value* v, std::set<llvm::BasicBlock*> &predec
             llvm::BasicBlock* B = I->getParent();
             if (predecessors.count(B) != 0) {
                 if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
-                    std::cerr << "ERROR: Value " << v->getName().str() << " is used in previous istruction: "; I->dump();
+                    std::cerr << "ERROR: Value " << v->getName().str() << " is used in previous instruction: "; I->dump();
                 }
                 return false;
             } else if (ConfigManager::s_veryVerboseVar) {
@@ -453,9 +454,9 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
 
     // let's try this one... :-(
     std::cerr << "Verifying original function..." << std::endl;
-    llvm::verifyFunction(*srcFun, &llvm::outs());
+    JITCompiler::verifyLLVMFunction(srcFun);
     std::cerr << "Verifying optimized function..." << std::endl;
-    llvm::verifyFunction(*newFun, &llvm::outs());
+    JITCompiler::verifyLLVMFunction(newFun);
 
     // generate continuation function
     llvm::Function* OSRDestFun = nullptr;
@@ -532,21 +533,24 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
     llvm::Value* arg2 = argIt++;
 
     // just for debugging purposes
-    if (ConfigManager::s_veryVerboseVar) {
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
         std::cerr << "Destination block: "; newBlock->dump();
 
-        std::cerr << "Values to set:" << std::endl;
-        for (llvm::Value* v: *valuesToSet) {
-            v->dump();
+        if (ConfigManager::s_veryVerboseVar) {
+            std::cerr << "Values to set:" << std::endl;
+            for (llvm::Value* v: *valuesToSet) {
+                v->dump();
+            }
+            printInfoOnAvailableValues(*optInfo->varMap, newFunc, environment);
         }
-
-        printInfoOnAvailableValues(*optInfo->varMap, newFunc, environment);
     }
 
-    std::map<JITCompiler::Value*, JITCompiler::Value*> IIRValMap;
-    // TODO check default initialization value
-    std::pair<llvm::Value*, llvm::Value*> inArgPair(nullptr, nullptr), outArgPair(nullptr, nullptr);
-    std::pair<llvm::Value*, llvm::Value*> envPair(nullptr, nullptr);
+    // create the StateMap object
+    StateMap *M = new StateMap(origFunc, newFunc);
+    StateMap::BlockPair blockPair(origBlock, newBlock);
+    llvm::Value* oldEnv = OSRGenInfo->environment;
+
+    std::map<SymbolExpr*, JITValPair> SymToIIRValPairMap;
 
     // info to reconstruct alloca instructions
     std::set<llvm::BasicBlock*> predecessors;
@@ -556,14 +560,22 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
 
     for (llvm::Value* valueToSet: *valuesToSet) { // TODO change order of if statements?
         if (valueToSet == arg1) {
-            inArgPair.first = arg1;
-            inArgPair.second = OSRGenInfo->arg1;
+            assert (arg1->getType() == OSRGenInfo->arg1->getType());
+            M->registerOneToOneValue(OSRGenInfo->arg1, arg1);
         } else if (valueToSet == arg2) {
-            outArgPair.first = arg2;
-            outArgPair.second = OSRGenInfo->arg2;
+            llvm::Type *oldMode = OSRGenInfo->arg2->getType();
+            llvm::Type *newMode = arg2->getType();
+            if (oldMode != newMode) {
+                std::cerr << "OLD MODE: " << JITCompiler::LLVMTypeToString(oldMode) << std::endl;
+                std::cerr << "NEW MODE: " << JITCompiler::LLVMTypeToString(newMode) << std::endl;
+                throw CompError("Type mismatch for LLVM output argument!");
+            } else {
+                M->registerOneToOneValue(OSRGenInfo->arg2, arg2);
+            }
+
         } else if (valueToSet == environment) {
-            envPair.first = environment;
-            envPair.second = OSRGenInfo->environment;
+            assert(OSRGenInfo->environment != nullptr); // TODO: can the environment be missing? can I still create it?
+            M->registerOneToOneValue(OSRGenInfo->environment, environment);
         } else {
             // inspect VarMap for the new function
             JITCompiler::Value* newIIRVal = nullptr;
@@ -579,26 +591,23 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
             }
             if (newIIRVal == nullptr) {
                 if (llvm::AllocaInst* alloca = llvm::dyn_cast<llvm::AllocaInst>(valueToSet)) {
+                    allocasToAdd.push_back(alloca);
                     if (hasNoPrevUses(valueToSet, predecessors)) {
-                        //std::cerr << "### RECONSTRUCT AN ALLOCA INST! ###" << std::endl;
-                        allocasToAdd.push_back(alloca);
+                        std::cerr << "Reconstructing alloca never referenced in predecessor blocks" << std::endl;
                     } else if (inLoop) {
                         predecessors.erase(newBlock);
                         if (hasNoPrevUses(valueToSet, predecessors)) {
-                            // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
-                            std::cerr << "### WARNING: RECONSTRUCT AN ENDANGERED ALLOCA INST! ###" << std::endl;
-                            allocasToAdd.push_back(alloca);
-                            valueToSet->dump();
+                            std::cerr << "Reconstructing alloca accessed (bitcast?) in OSR dest block" << std::endl;
                         } else {
-                            std::cerr << "ERROR: alloca instruction already referenced in a predecessor block" << std::endl;
+                            // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
+                            std::cerr << "WARNING: reconstructing alloca instruction referenced in a predecessor block" << std::endl;
                             valueToSet->dump();
-                            assert(false);
                         }
                         predecessors.insert(newBlock);
                     } else {
-                        std::cerr << "ERROR: alloca instruction already referenced in a predecessor block" << std::endl;
+                        // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
+                        std::cerr << "WARNING: reconstructing alloca instruction referenced in a predecessor block" << std::endl;
                         valueToSet->dump();
-                        assert(false);
                     }
                 } else {
                     std::cerr << "FATAL ERROR - missing information for value:" << std::endl;
@@ -617,42 +626,9 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
                 }
                 assert(oldIIRVal != nullptr);
 
-                IIRValMap[newIIRVal] = oldIIRVal;
+                SymToIIRValPairMap[newSym] = JITValPair(newIIRVal, oldIIRVal);
             }
         }
-    }
-
-    // at this point all IIR values have a match!
-    StateMap *M = new StateMap(origFunc, newFunc);
-    StateMap::BlockPair blockPair(origBlock, newBlock);
-
-    // let's process arguments and environment first
-    if (inArgPair.first != nullptr) {
-        assert (inArgPair.first->getType() == inArgPair.second->getType()); // TODO?
-        M->registerOneToOneValue(inArgPair.second, inArgPair.first);
-    }
-    if (outArgPair.first != nullptr) {
-        //assert (outArgPair.first->getType() == outArgPair.second->getType()); // TODO?
-        llvm::Type *oldMode = outArgPair.second->getType();
-        llvm::Type *newMode = outArgPair.first->getType();
-        if (oldMode != newMode) { // TODO check also IIR type!
-            std::cerr << "Type mismatch for LLVM output argument!" << std::endl;
-            std::cerr << "OLD MODE: " << JITCompiler::LLVMTypeToString(oldMode) << std::endl;
-            std::cerr << "NEW MODE: " << JITCompiler::LLVMTypeToString(newMode) << std::endl;
-            llvm::FunctionType* oldFTy = origFunc->getFunctionType();
-            llvm::FunctionType* newFTy = newFunc->getFunctionType();
-            std::cerr << "OLD function type:" << std::endl;
-            oldFTy->dump();
-            std::cerr << "NEW function type:" << std::endl;
-            newFTy->dump();
-            assert(false);
-        } else {
-            M->registerOneToOneValue(outArgPair.second, outArgPair.first);
-        }
-    }
-    if (envPair.first != nullptr) {
-        assert(envPair.second != nullptr); // TODO: can the environment be missing? can I still create it?
-        M->registerOneToOneValue(envPair.second, envPair.first);
     }
 
     // add compensation code for alloca instructions
@@ -673,20 +649,16 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
     }
 
     // now we can process IIR variables [and add compensation code where needed]
-    for (std::map<JITCompiler::Value*, JITCompiler::Value*>::iterator it = IIRValMap.begin(),
-            end = IIRValMap.end(); it != end; ++it) {
-        JITCompiler::Value* newVal = it->first;
-        JITCompiler::Value* oldVal = it->second;
+    for (std::map<SymbolExpr*, JITValPair>::iterator it = SymToIIRValPairMap.begin(),
+            end = SymToIIRValPairMap.end(); it != end; ++it) {
+        SymbolExpr* sym = it->first;
+        JITValPair &valPair = it->second;
+        JITCompiler::Value* newVal = valPair.first;
+        JITCompiler::Value* oldVal = valPair.second;
 
         if (newVal->objType != oldVal->objType) {
-            for (IIRVarMap::iterator thisIt = optInfo->varMap->begin(), thisEnd = optInfo->varMap->end();
-                    thisIt != thisEnd; ++thisIt) {
-                if (thisIt->second == newVal) {
-                    std::cerr << "Type mismatch detected for variable " << thisIt->first->getSymName() << std::endl;
-                    break;
-                }
-            }
-            generateTypeConversionCompCode(oldVal, newVal, M, bpInfo, modForNewFun);
+            std::cerr << "Type mismatch detected for variable " << sym->getSymName() << std::endl;
+            generateTypeConversionCompCode(sym, valPair, M, bpInfo, modForNewFun, oldEnv);
         } else {
             M->registerOneToOneValue(oldVal->pValue, newVal->pValue);
         }
@@ -934,6 +906,7 @@ void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::
 
     if (newMode == llvm::Type::getDoubleTy(Context)) {
         if (newType == DataObject::MATRIX_F64) {
+            std::cerr << "Performing cast to UNKNOWN (i8*) to f64 matrix (double*)" << std::endl;
             const JITCompiler::NativeFunc& nativeFunc = JITCompiler::s_nativeMap[(void*)MatrixF64Obj::getScalarVal];
             llvm::Function* functionToCall = JITCompiler::getLLVMFunctionToCall(nativeFunc.pLLVMFunc, currModule);
             JITCompiler::LLVMValueVector args(1, oldVal->pValue);
@@ -960,13 +933,60 @@ void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::
 
 }
 
-void OSRFeval::generateTypeConversionCompCode(JITCompiler::Value* oldVal, JITCompiler::Value* newVal,
-        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule) {
+void OSRFeval::compCodeForMissingVal(SymbolExpr* sym, OSRFeval::JITValPair& valPair, StateMap* M,
+        StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, llvm::Value* oldEnv) {
+
+    std::cerr << "I will ask the environment to give me the object!" << std::endl;
+
+    StateMap::CompCode* compCode = new StateMap::CompCode();
+
+    compCode->args = new llvm::SmallVector<llvm::Value*, 1>;
+    compCode->args->push_back(oldEnv);
+
+    JITCompiler::LLVMValueVector lookupArgs;
+    lookupArgs.push_back(oldEnv);
+    lookupArgs.push_back(JITCompiler::createPtrConst(sym));
+
+    const JITCompiler::NativeFunc& envLookupNativeFunc = JITCompiler::s_nativeMap[(void*)Environment::lookup];
+    llvm::Function* envLookupFun = JITCompiler::getLLVMFunctionToCall(envLookupNativeFunc.pLLVMFunc, currModule);
+    llvm::CallInst* envResult = llvm::CallInst::Create(envLookupFun, lookupArgs, "envLookupFor"+sym->getSymName()); // i8*
+
+    JITCompiler::Value* newVal = valPair.first;
+    llvm::Type* newType = newVal->pValue->getType();
+    if (newType->isPointerTy()) {
+        llvm::PointerType *newPtrType = llvm::cast<llvm::PointerType>(newType);
+        assert (newPtrType->isPointerTy());
+
+        compCode->code = new llvm::SmallVector<llvm::Value*, 1>;
+        compCode->code->push_back(envResult);
+        compCode->value = envResult;
+
+        StateMap::ValueInfo* valInfo = new StateMap::ValueInfo(compCode);
+        llvm::Value* destVal = newVal->pValue;
+        bpInfo.valueInfoMap.insert(std::pair<llvm::Value*, StateMap::ValueInfo*>(destVal, valInfo));
+    } else {
+        throw CompError("Sorry, I can only convert to pointers when performing env lookup!");
+    }
+}
+
+
+void OSRFeval::generateTypeConversionCompCode(SymbolExpr* sym, OSRFeval::JITValPair &valPair,
+        StateMap* M, StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, llvm::Value* oldEnv) {
+    JITCompiler::Value* newVal = valPair.first;
+    JITCompiler::Value* oldVal = valPair.second;
     DataObject::Type oldType = oldVal->objType, newType = newVal->objType;
-    std::cerr << "--> old type: " << DataObject::getTypeName(oldType) << std::endl;
-    std::cerr << "    corresponding IR: "; oldVal->pValue->dump();
     std::cerr << "--> new type: " << DataObject::getTypeName(newType) << std::endl;
     std::cerr << "    corresponding IR: "; newVal->pValue->dump();
+    std::cerr << "--> old type: " << DataObject::getTypeName(oldType) << std::endl;
+
+    if (oldVal->pValue == nullptr) {
+        std::cerr << "------> WARNING: NOT AN IR VALUE! <------" << std::endl;
+        compCodeForMissingVal(sym, valPair, M, bpInfo, currModule, oldEnv);
+        return;
+    }
+
+    std::cerr << "    corresponding IR: "; oldVal->pValue->dump();
+
 
     switch(oldType) {
         case DataObject::UNKNOWN: {
@@ -978,6 +998,4 @@ void OSRFeval::generateTypeConversionCompCode(JITCompiler::Value* oldVal, JITCom
             assert(false);
         }
     }
-
-
 }
