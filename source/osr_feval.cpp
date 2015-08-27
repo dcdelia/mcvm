@@ -254,8 +254,12 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             std::cerr << "First argument for feval: [" << (void*)profVal << "] "; profVal->dump();
         }
 
+        // (verbose, updateF1, nameForNewF1, modForNewF1, nameForNewF2, nameForNewF2)
+
+        OSRLibrary::OSRPointConfig config(false, true, nullptr, currModule, nullptr, nullptr);
+
         OSRLibrary::OSRPair retOSRPair = OSRLibrary::insertOpenOSR(*JITCompiler::s_Context, openOSRInfo, cond,
-                                            profVal, generator, true, currFunction->getName(), valuesToTransfer);
+                                            profVal, generator, valuesToTransfer, config);
 
         if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
             retOSRPair.first->dump(); // updated currFunction
@@ -670,7 +674,7 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
     std::string OSRDestFunName = (newFunc->getName().str()).append("DestOSR");
     std::vector<llvm::Value*> *passedValues = OSRGenInfo->passedValues;
     llvm::Function* OSRDestFun = OSRLibrary::generateOSRDestFun(*JITCompiler::s_Context ,*origFunc,
-            *newFunc, blockPair, *passedValues, *M, OSRDestFunName);
+            *newFunc, blockPair, *passedValues, *M, &OSRDestFunName);
 
     // insert continuation function into LLVM Module
     modForNewFun->getFunctionList().push_back(OSRDestFun);
