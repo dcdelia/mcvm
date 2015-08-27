@@ -543,11 +543,11 @@ namespace mcvm { namespace stdlib {
         void shutdownVM(int code) {
             // TODO provide a common interface for main.cpp
 
-            // Shut down the JIT compiler
-            JITCompiler::shutdown();
-
             // Close the interface to Natlab
             Client::shutdown();
+
+            // Shut down the JIT compiler
+            JITCompiler::shutdown();
 
             exit(code);
         }

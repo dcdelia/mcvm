@@ -578,7 +578,7 @@ void JITCompiler::shutdown()
     delete s_JITHelper;
     delete s_Context;
 
-    llvm::llvm_shutdown();
+    // llvm::llvm_shutdown(); // segfaults on LLVM 3.6.2 :-/
 }
 
 /***************************************************************

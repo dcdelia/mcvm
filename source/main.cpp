@@ -107,11 +107,11 @@ int main(int argc, char** argv)
 		runREPLoop();
 	}
 
-	// Shut down the JIT compiler
-	JITCompiler::shutdown();
-
 	// Close the interface to Natlab
 	Client::shutdown();
+
+        // Shut down the JIT compiler
+	JITCompiler::shutdown();
 
 	// Nothing went wrong
 	return 0;

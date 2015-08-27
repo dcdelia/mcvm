@@ -17,8 +17,7 @@
 #include <string>
 
 MCJITHelper::~MCJITHelper() {
-    delete ExecEngine;
-    /* DCD: TODO free JITted code? */
+    // for the time being we rely on llvm::shutdown() to avoid segfaults in McVM
 }
 
 llvm::Module* MCJITHelper::generateFreshModule() {
