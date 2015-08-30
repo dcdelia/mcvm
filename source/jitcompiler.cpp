@@ -1213,6 +1213,9 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
 
 	llvm::Function* pFuncObj = compileFunctionGenerateIR(pFunction, compFunction, compVersion, argTypeStr, MCJITModule);
 
+        // check IR for well-formedness
+        verifyLLVMFunction(pFuncObj);
+
         // feval optimization pass
         if (s_jitFevalOptVar) {
             bool updated = OSRFeval::processCompVersion(&compFunction, &compVersion);
@@ -1221,14 +1224,12 @@ void JITCompiler::compileFunction(ProgFunction* pFunction, const TypeSetString& 
                     std::cerr << "Function " << compVersion.pLLVMFunc->getName().str() <<
                         " has been instrumented with OSR points for feval optimization" << std::endl;
                 }
+                // TODO optimization?
             } else {
-                verifyLLVMFunction(pFuncObj);
-                runFPM(pFuncObj); // TODO
+                runFPM(pFuncObj); // Optimize IR
             }
         } else {
-            // Optimize IR
-            verifyLLVMFunction(pFuncObj);
-            runFPM(pFuncObj);
+            runFPM(pFuncObj); // Optimize IR
         }
 
         const std::string compiledFunctionName = pFuncObj->getName().str();

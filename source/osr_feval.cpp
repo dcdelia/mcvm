@@ -134,33 +134,27 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
     CompPairToOSRFevalInfoMap::iterator cpIt = CompOSRInfoMap.find(funPair);
     if (cpIt == CompOSRInfoMap.end()) return false;
 
-    std::cerr << "Current function contains annotated feval instructions!" << std::endl;
+    std::cerr << "Function contains annotated feval instructions!" << std::endl;
     if (ConfigManager::s_veryVerboseVar) {
         for (FevalInfoForOSR *info: cpIt->second) {
             info->dump();
         }
     }
 
-    std::cerr << "OSR points should be inserted at these instructions:" << std::endl;
-    for (ParamExpr* loc: locations) {
-        std::cerr << loc->toString() << std::endl;
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "OSR points should be inserted at these instructions:" << std::endl;
+        for (ParamExpr* loc: locations) {
+            std::cerr << loc->toString() << std::endl;
+        }
     }
 
     llvm::Function* currFunction = pCompVersion->pLLVMFunc;
     llvm::Module* currModule = currFunction->getParent();
     assert(currModule != nullptr);
 
-    // store the control version of the function
+    /* // store the control version of the function
     LLVMUtils::ClonedFunc clonedFunPair = LLVMUtils::cloneFunction(currFunction);
-    CompOSRCtrlFunMap.insert(std::pair<CompPair, LLVMUtils::ClonedFunc>(funPair, std::move(clonedFunPair)));
-
-    // simplify CFG (too many BBs at this stage)
-    /*
-    llvm::FunctionPassManager FPM(currModule);
-    FPM.add(llvm::createCFGSimplificationPass());
-    FPM.doInitialization();
-    FPM.run(*currFunction);
-    */
+    CompOSRCtrlFunMap.insert(std::pair<CompPair, LLVMUtils::ClonedFunc>(funPair, std::move(clonedFunPair))); */
 
     /* Process each candidate location for OSR point insertion */
     std::vector<FevalInfoForOSR*> &fevalInfoForOSRVec = CompOSRInfoMap[funPair];
@@ -335,20 +329,23 @@ bool OSRFeval::sanityCheckOnPassedValues(OSRFeval::FevalInfoForOSRGen* genInfo, 
     computePredecessorsForBlock(srcBlock, predecessors);
     bool inLoop = (predecessors.count(srcBlock) != 0);
 
-    std::cerr << "Analyzing values passed at the OSR point..." << std::endl;
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Analyzing values passed at the OSR point..." << std::endl;
+    }
     FevalInfoForOSR* infoAtIIR = genInfo->fevalInfoForOSR;
     for (size_t index = 0, size = genInfo->passedValues->size(); index < size; ++index) {
         llvm::Value* v = (*(genInfo->passedValues))[index];
-        //std::cerr << "[" << index << "] with address " << (void*)v << std::endl;
-        std::cerr << "[" << index << "] with address " << (void*)v << " - "; v->dump();
-        std::cerr << "--> ";
+        if (ConfigManager::s_veryVerboseVar) {
+            std::cerr << "[" << index << "] with address " << (void*)v << " - "; v->dump();
+            std::cerr << "--> ";
+        }
         // try to match against environment or arguments
         if (v == genInfo->environment) {
-            std::cerr << "environment object" << std::endl;
+            if (ConfigManager::s_veryVerboseVar) std::cerr << "environment object" << std::endl;
         } else if (v == genInfo->arg1) {
-            std::cerr << "argument 1 (input)" << std::endl;
+            if (ConfigManager::s_veryVerboseVar) std::cerr << "argument 1 (input)" << std::endl;
         } else if (v == genInfo->arg2) {
-            std::cerr << "argument 2 (output)" << std::endl;
+            if (ConfigManager::s_veryVerboseVar) std::cerr << "argument 2 (output)" << std::endl;
         } else {
             // try to match against IIR variables
             for (IIRVarMap::iterator it = infoAtIIR->varMap->begin(),
@@ -356,19 +353,21 @@ bool OSRFeval::sanityCheckOnPassedValues(OSRFeval::FevalInfoForOSRGen* genInfo, 
                 SymbolExpr* sym = it->first;
                 JITCompiler::Value* jitVal = it->second;
                 if (it->second->pValue == v) {
+                    if (ConfigManager::s_veryVerboseVar) {
                     std::cerr << "variable " << sym->getSymName() << " of type "
                             << DataObject::getTypeName(jitVal->objType) << std::endl;
+                    }
                     break;
                 }
                 if (++it == end) {
                     if (llvm::isa<llvm::AllocaInst>(v)) {
                         if (hasNoPrevUses(v, predecessors)) {
-                            std::cerr << "alloca with no previous uses!" << std::endl;
+                            if (ConfigManager::s_veryVerboseVar) std::cerr << "alloca with no previous uses!" << std::endl;
                         } else if (inLoop) {
                             predecessors.erase(srcBlock);
                             if (hasNoPrevUses(v, predecessors)) {
                                 // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
-                                std::cerr << "WARNING: alloca referenced in current block (we are in a loop)!" << std::endl;
+                                std::cerr << "WARNING: alloca referenced in current block (loop)" << std::endl;
                             } else {
                                 std::cerr << "ERROR: alloca instruction already referenced in a predecessor block" << std::endl;
                                 error = true;
@@ -457,10 +456,10 @@ void* OSRFeval::funGenerator(OSRLibrary::RawOpenOSRInfo *info, void* profDataAdd
     CompPair &newCompPair = IRPair.second;
     llvm::Module* modForNewFun = newFun->getParent();
 
-    // let's try this one... :-(
-    std::cerr << "Verifying original function..." << std::endl;
-    JITCompiler::verifyLLVMFunction(srcFun);
-    std::cerr << "Verifying optimized function..." << std::endl;
+    // perform code verification
+    if (ConfigManager::s_veryVerboseVar) {
+        std::cerr << "Verifying optimized function..." << std::endl;
+    }
     JITCompiler::verifyLLVMFunction(newFun);
 
     // generate continuation function
@@ -598,11 +597,15 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
                 if (llvm::AllocaInst* alloca = llvm::dyn_cast<llvm::AllocaInst>(valueToSet)) {
                     allocasToAdd.push_back(alloca);
                     if (hasNoPrevUses(valueToSet, predecessors)) {
-                        std::cerr << "Reconstructing alloca never referenced in predecessor blocks" << std::endl;
+                        if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+                            std::cerr << "Reconstructing alloca never referenced in predecessor blocks" << std::endl;
+                        }
                     } else if (inLoop) {
                         predecessors.erase(newBlock);
                         if (hasNoPrevUses(valueToSet, predecessors)) {
-                            std::cerr << "Reconstructing alloca accessed (bitcast?) in OSR dest block" << std::endl;
+                            if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+                                std::cerr << "Reconstructing alloca accessed (bitcast?) in OSR dest block" << std::endl;
+                            }
                         } else {
                             // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
                             std::cerr << "WARNING: reconstructing alloca instruction referenced in a predecessor block" << std::endl;
@@ -895,8 +898,10 @@ void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::
     llvm::LLVMContext &Context = *JITCompiler::s_Context;
 
     assert(oldMode == llvm::Type::getInt8PtrTy(Context));
-    std::cerr << "OLD MODE: " << JITCompiler::LLVMTypeToString(oldMode) << std::endl;
-    std::cerr << "NEW MODE: " << JITCompiler::LLVMTypeToString(newMode) << std::endl;
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "OLD MODE: " << JITCompiler::LLVMTypeToString(oldMode) << std::endl;
+        std::cerr << "NEW MODE: " << JITCompiler::LLVMTypeToString(newMode) << std::endl;
+    }
 
     if (newMode == oldMode) {
         std::cerr << "WARNING: requested a cast from UNKNOWN to "
@@ -911,7 +916,9 @@ void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::
 
     if (newMode == llvm::Type::getDoubleTy(Context)) {
         if (newType == DataObject::MATRIX_F64) {
-            std::cerr << "Performing cast to UNKNOWN (i8*) to f64 matrix (double*)" << std::endl;
+            if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+                std::cerr << "Performing cast to UNKNOWN (i8*) to f64 matrix (double*)" << std::endl;
+            }
             const JITCompiler::NativeFunc& nativeFunc = JITCompiler::s_nativeMap[(void*)MatrixF64Obj::getScalarVal];
             llvm::Function* functionToCall = JITCompiler::getLLVMFunctionToCall(nativeFunc.pLLVMFunc, currModule);
             JITCompiler::LLVMValueVector args(1, oldVal->pValue);
@@ -941,7 +948,9 @@ void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::
 void OSRFeval::compCodeForMissingVal(SymbolExpr* sym, OSRFeval::JITValPair& valPair, StateMap* M,
         StateMap::BlockPairInfo& bpInfo, llvm::Module* currModule, llvm::Value* oldEnv) {
 
-    std::cerr << "I will ask the environment to give me the object!" << std::endl;
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "I will ask the environment to give me the object!" << std::endl;
+    }
 
     StateMap::CompCode* compCode = new StateMap::CompCode();
 
@@ -980,17 +989,23 @@ void OSRFeval::generateTypeConversionCompCode(SymbolExpr* sym, OSRFeval::JITValP
     JITCompiler::Value* newVal = valPair.first;
     JITCompiler::Value* oldVal = valPair.second;
     DataObject::Type oldType = oldVal->objType, newType = newVal->objType;
-    std::cerr << "--> new type: " << DataObject::getTypeName(newType) << std::endl;
-    std::cerr << "    corresponding IR: "; newVal->pValue->dump();
-    std::cerr << "--> old type: " << DataObject::getTypeName(oldType) << std::endl;
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "--> new type: " << DataObject::getTypeName(newType) << std::endl;
+        std::cerr << "    corresponding IR: "; newVal->pValue->dump();
+        std::cerr << "--> old type: " << DataObject::getTypeName(oldType) << std::endl;
+    }
 
     if (oldVal->pValue == nullptr) {
-        std::cerr << "------> WARNING: NOT AN IR VALUE! <------" << std::endl;
+        if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+            std::cerr << "------> WARNING: NOT AN IR VALUE! <------" << std::endl;
+        }
         compCodeForMissingVal(sym, valPair, M, bpInfo, currModule, oldEnv);
         return;
     }
 
-    std::cerr << "    corresponding IR: "; oldVal->pValue->dump();
+    if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+        std::cerr << "    corresponding IR: "; oldVal->pValue->dump();
+    }
 
 
     switch(oldType) {
@@ -999,8 +1014,7 @@ void OSRFeval::generateTypeConversionCompCode(SymbolExpr* sym, OSRFeval::JITValP
         } break;
 
         default: {
-            std::cerr << "Sorry, this part has not been fully implemented yet :-)" << std::endl;
-            assert(false);
+            throw CompError("Sorry, I can only convert UNKNOWN object types for now!");
         }
     }
 }
