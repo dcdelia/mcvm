@@ -254,9 +254,10 @@ bool OSRFeval::processCompVersion(JITCompiler::CompFunction* pCompFunction, JITC
             std::cerr << "First argument for feval: [" << (void*)profVal << "] "; profVal->dump();
         }
 
-        // (verbose, updateF1, nameForNewF1, modForNewF1, nameForNewF2, nameForNewF2)
-
-        OSRLibrary::OSRPointConfig config(false, true, nullptr, currModule, nullptr, nullptr);
+        /* (verbose, updateF1, branchTakenProb, nameForNewF1, modForNewF1,
+         * ptrForF1NewToF1Map, nameForNewF2, nameForNewF2, ptrForF2NewToF2Map) */
+        OSRLibrary::OSRPointConfig config(false, true, -1, nullptr, currModule,
+                nullptr, nullptr, nullptr, nullptr);
 
         OSRLibrary::OSRPair retOSRPair = OSRLibrary::insertOpenOSR(*JITCompiler::s_Context, openOSRInfo, cond,
                                             profVal, generator, valuesToTransfer, config);

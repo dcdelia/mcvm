@@ -43,7 +43,8 @@
 namespace mcvm { namespace stdlib {
 
 	// Start time value for the tic-toc timer system
-	double ticTocStartTime = FLOAT_INFINITY;
+        struct timeval ticTocStartTime;
+        bool ticStart = false;
 
 	// Map of file ids to open file handles
 	typedef std::map<size_t, FILE*> FileHandleMap;
@@ -4365,21 +4366,16 @@ namespace mcvm { namespace stdlib {
 	* Purpose : Begin timing measurements
 	* Initial : Maxime Chevalier-Boisvert on February 26, 2009
 	****************************************************************
-	Revisions and bug fixes:
+	Revisions and bug fixes: use timeval rather than double to avoid
+        errors in measurements by Daniele Cono D'Elia, August 2015.
 	*/
 	ArrayObj* ticFunc(ArrayObj* pArguments)
 	{
-		// Create a timeval struct to store the time info
-		struct timeval timeVal;
+                // Set global tick flag to true
+                ticStart = true;
 
-		// Get the current time
-		gettimeofday(&timeVal, NULL);
-
-		// Compute the time in seconds using microsecond information
-		double timeSecs = timeVal.tv_sec + timeVal.tv_usec * 1.0e-6;
-
-		// Set the timer start time
-		ticTocStartTime = timeSecs;
+                // Save the current time
+		gettimeofday(&ticTocStartTime, NULL);
 
 		// Return nothing
 		return new ArrayObj();
@@ -4390,33 +4386,47 @@ namespace mcvm { namespace stdlib {
 	* Purpose : Stop timing measurements
 	* Initial : Maxime Chevalier-Boisvert on February 26, 2009
 	****************************************************************
-	Revisions and bug fixes:
+	Revisions and bug fixes: use timeval rather than double to avoid
+        errors in measurements by Daniele Cono D'Elia, August 2015.
 	*/
 	ArrayObj* tocFunc(ArrayObj* pArguments)
 	{
-		// If the start time was not set
-		if (ticTocStartTime == FLOAT_INFINITY)
+                // Create a timeval struct to store the time info
+		struct timeval ticTocEndTime;
+
+		// Get the current time
+		gettimeofday(&ticTocEndTime, NULL);
+
+                // If the start time was not set
+		if (ticStart == false)
 		{
 			// Throw an exception
 			throw RunError("timer start time not set");
 		}
 
-		// Create a timeval struct to store the time info
-		struct timeval timeVal;
+                 // Set global tic flag to false
+                ticStart = false;
 
-		// Get the current time
-		gettimeofday(&timeVal, NULL);
+                // Compute the time difference in seconds using microsecond information
+                long seconds = ticTocEndTime.tv_sec - ticTocStartTime.tv_sec;
+                long microseconds = ticTocEndTime.tv_usec - ticTocStartTime.tv_usec;
+                if (microseconds < 0) {
+                    --seconds;
+                    microseconds = 1000000 + microseconds;
+                }
+		double timeDiff = seconds + microseconds * 1.0e-6;
 
-		// Compute the time in seconds using microsecond information
-		double timeSecs = timeVal.tv_sec + timeVal.tv_usec * 1.0e-6;
+                // For profiling purposes only
+                long m = seconds / 60;
+                long s = seconds % 60;
+                long ms = microseconds / 1000;
+                long us = microseconds % 1000;
 
-		// Compute the time difference
-		double deltaT = timeSecs - ticTocStartTime;
-
-                std::cerr << "DEBUG: deltaT is " << deltaT << std::endl;
+                std::cerr << "[TOC] Elapsed time: " << m << " m " << s << " s "
+                        << ms << " ms " << us << " us" << std::endl;
 
 		// Return the time difference value
-		return new ArrayObj(new MatrixF64Obj(deltaT));
+		return new ArrayObj(new MatrixF64Obj(timeDiff));
 	}
 
 	/***************************************************************

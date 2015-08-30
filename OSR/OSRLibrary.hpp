@@ -25,19 +25,35 @@ class OSRLibrary {
         typedef struct OSRPointConfig {
             bool verbose;
             bool updateF1;
+            int branchTakenProb;
 
             const std::string* nameForNewF1;
             llvm::Module* modForNewF1;
+            StateMap** ptrForF1NewToF1Map;
 
             // finalized OSR only
             const std::string* nameForNewF2;
             llvm::Module* modForNewF2;
+            StateMap** ptrForF2NewToF2Map;
 
             OSRPointConfig(bool verbose = false, bool updateF1 = true,
-                    const std::string* nameForNewF1 = nullptr, llvm::Module* modForNewF1 = nullptr,
-                    const std::string* nameForNewF2 = nullptr, llvm::Module* modForNewF2 = nullptr) :
-                    verbose(verbose), updateF1(updateF1), nameForNewF1(nameForNewF1), modForNewF1(modForNewF1),
-                    nameForNewF2(nameForNewF2), modForNewF2(modForNewF2) {};
+                    int branchTakenProb = -1,
+                    const std::string* nameForNewF1 = nullptr,
+                    llvm::Module* modForNewF1 = nullptr,
+                    StateMap** ptrForF1NewToF1Map = nullptr,
+                    const std::string* nameForNewF2 = nullptr,
+                    llvm::Module* modForNewF2 = nullptr,
+                    StateMap** ptrForF2NewToF2Map = nullptr) :
+                    verbose(verbose), updateF1(updateF1),
+                    branchTakenProb(branchTakenProb),
+                    nameForNewF1(nameForNewF1), modForNewF1(modForNewF1),
+                    ptrForF1NewToF1Map(ptrForF1NewToF1Map),
+                    nameForNewF2(nameForNewF2), modForNewF2(modForNewF2),
+                    ptrForF2NewToF2Map(ptrForF2NewToF2Map) {
+                if (branchTakenProb != -1 && (branchTakenProb > 100 || branchTakenProb < 0)) {
+                    llvm::report_fatal_error("OSR probability should be either -1 or an integer number between 0 and 100");
+                }
+            };
         } OSRPointConfig;
 
         typedef struct OpenOSRInfo {
@@ -84,7 +100,8 @@ class OSRLibrary {
                                     std::vector<llvm::Value*> &valuesToPass,
                                     StateMap &M,
                                     const std::string* F2NewName,
-                                    bool verbose = false);
+                                    bool verbose = false,
+                                    StateMap** ptrForF2NewToF2Map = nullptr);
 
         static llvm::Function* prepareForRedirection(llvm::Function& F);
         static void enableRedirection(uint64_t f, uint64_t destination);
@@ -96,13 +113,14 @@ class OSRLibrary {
         static void fixOperandReferencesFromVMap(llvm::Function* NF, llvm::Function* F, llvm::ValueToValueMapTy &VMap);
         static void replaceUsesWithNewValuesAndUpdatePHINodes(llvm::Function* NF, llvm::BasicBlock* origDestBlock,
             std::vector<llvm::Value*> &origValuesToSetForDestBlock, llvm::ValueToValueMapTy &VMap,
-            llvm::ValueToValueMapTy &updatesForVMap, llvm::SmallVectorImpl<llvm::PHINode*> *insertedPHINodes, bool verbose);
+            llvm::ValueToValueMapTy &updatesForVMap, llvm::SmallVectorImpl<llvm::PHINode*> *insertedPHINodes,
+            bool verbose, StateMap** ptrForF2NewToF2Map);
         static llvm::Function* duplicateFunction(llvm::Function* F, const llvm::Twine &Name, llvm::ValueToValueMapTy &VMap);
         static OSRCond regenerateOSRCond(OSRCond &cond, llvm::ValueToValueMapTy &VMap);
         static llvm::BasicBlock* generateTriggerOSRBlock(llvm::LLVMContext &Context, llvm::Function* OSRDest,
                 std::vector<llvm::Value*> &valuesToPass);
-        static llvm::BasicBlock* insertOSRCond(llvm::Function* F, llvm::BasicBlock* B, llvm::BasicBlock* OSR_B, OSRCond& cond,
-            const llvm::Twine& BBName);
+        static llvm::BasicBlock* insertOSRCond(llvm::LLVMContext &Context, llvm::Function* F, llvm::BasicBlock* B,
+            llvm::BasicBlock* OSR_B, OSRCond& cond, const llvm::Twine& BBName, int branchTakenProb);
 };
 
 #endif
