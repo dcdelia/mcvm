@@ -1,3 +1,6 @@
+CXX = clang++
+#CXX = g++
+
 OUT = mcvm
 OBJDIR = build
 SRCDIR = source
@@ -8,15 +11,15 @@ OSR_OBJDIR = $(OBJDIR)/OSR
 OSR_INCLUDE =
 OSR_CXXFLAGS =  $(OSR_INCLUDE) -O0 -g -Wall $(shell llvm-config --cxxflags) # no RTTI on LLVM "Release" builds
 
-INCLUDE = -Ivendor/include -Ilib/include -I/usr/local/include # -I$(OSR_DIR)
-CXXFLAGS =   $(INCLUDE) -Wall -g3 -std=c++11 -Wno-deprecated
-CXXFLAGS += -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DMCVM_USE_LAPACKE -Wfatal-errors
-#LLVMLIBS = $(shell llvm-config --libfiles)
+LLVM_INCLUDE_DIR = $(shell llvm-config --includedir)
 LLVMLIBS = $(shell llvm-config  --ldflags --system-libs --libs core mcjit native)
+#LLVMLIBS = $(shell llvm-config --libfiles)
+
+INCLUDE = -Ivendor/include -Ilib/include -I/usr/local/include -I$(LLVM_INCLUDE_DIR)# -I$(OSR_DIR)
+CXXFLAGS = $(INCLUDE) -Wall -g3 -std=c++11 -Wno-deprecated
+CXXFLAGS += -D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -DMCVM_USE_LAPACKE -Wfatal-errors
 LIBS = -pthread  -ldl -llapacke -lcblas
 LIBS +=  vendor/lib/libgccpp.a  vendor/lib/libgc.a
-CXX = g++
-#CXX = clang++
 
 _OBJS = analysis_arraycopy.o analysis_boundscheck.o analysis_copyplacement.o analysis_livevars.o \
 		analysismanager.o analysis_metrics.o analysis_reachdefs.o analysis_typeinfer.o arrayobj.o \
