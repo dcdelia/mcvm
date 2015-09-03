@@ -4416,14 +4416,7 @@ namespace mcvm { namespace stdlib {
                 }
 		double timeDiff = seconds + microseconds * 1.0e-6;
 
-                // For profiling purposes only
-                long m = seconds / 60;
-                long s = seconds % 60;
-                long ms = microseconds / 1000;
-                long us = microseconds % 1000;
-
-                std::cerr << "[TOC] Elapsed time: " << m << " m " << s << " s "
-                        << ms << " ms " << us << " us" << std::endl;
+                ::fprintf(stderr, "[TOC] Elapsed time: %ld.%06ld seconds\n", seconds, microseconds);
 
 		// Return the time difference value
 		return new ArrayObj(new MatrixF64Obj(timeDiff));

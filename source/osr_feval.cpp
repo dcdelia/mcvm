@@ -665,7 +665,7 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
         JITCompiler::Value* oldVal = valPair.second;
 
         if (newVal->objType != oldVal->objType) {
-            std::cerr << "Type mismatch detected for variable " << sym->getSymName() << std::endl;
+            std::cerr << "Type conversion required for variable " << sym->getSymName() << std::endl;
             generateTypeConversionCompCode(sym, valPair, M, bpInfo, modForNewFun, oldEnv);
         } else {
             M->registerOneToOneValue(oldVal->pValue, newVal->pValue);
