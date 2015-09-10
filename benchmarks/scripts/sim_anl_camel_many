@@ -1,0 +1,5 @@
+cd benchmarks/sim_anl
+for trial = 1:6
+  testCamel
+end
+quit

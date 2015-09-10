@@ -1,0 +1,3 @@
+cd benchmarks/sim_anl
+testCamel
+quit

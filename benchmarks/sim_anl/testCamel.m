@@ -1,4 +1,4 @@
-function test1()
+function testCamel()
   fun = 'camel';
   initial = [0, 0];
   lowerBound = [-10, -10];

@@ -1,4 +1,4 @@
-function test1direct()
+function testCamel_direct()
   initial = [0, 0];
   lowerBound = [-10, -10];
   upperBound = [10, 10];

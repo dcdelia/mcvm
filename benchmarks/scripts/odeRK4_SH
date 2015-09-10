@@ -1,0 +1,3 @@
+cd benchmarks/odeRK4
+testSH
+quit

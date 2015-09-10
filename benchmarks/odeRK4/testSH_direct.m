@@ -1,4 +1,4 @@
-function testSHdirect()
+function testSH_direct()
   h = 0.0001;
   tn = 20; % stopping time
   y0 = 1; % IC

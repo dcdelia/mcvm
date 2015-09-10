@@ -1,0 +1,5 @@
+cd benchmarks/odeRK4
+for trial = 1:5
+  testSH_direct
+end
+quit

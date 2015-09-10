@@ -1,0 +1,5 @@
+cd benchmarks/odeMidpt
+for trial = 1:5
+  testSH_direct
+end
+quit

@@ -1,0 +1,3 @@
+cd benchmarks/odeMidpt
+testSH
+quit
