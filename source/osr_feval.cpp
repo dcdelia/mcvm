@@ -367,7 +367,9 @@ bool OSRFeval::sanityCheckOnPassedValues(OSRFeval::FevalInfoForOSRGen* genInfo, 
                             predecessors.erase(srcBlock);
                             if (hasNoPrevUses(v, predecessors)) {
                                 // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
-                                std::cerr << "WARNING: alloca referenced in current block (loop)" << std::endl;
+                                if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+                                    std::cerr << "WARNING: alloca referenced in current block (loop)" << std::endl;
+                                }
                             } else {
                                 std::cerr << "ERROR: alloca instruction already referenced in a predecessor block" << std::endl;
                                 error = true;
@@ -608,14 +610,18 @@ std::pair<StateMap*, llvm::Function*> OSRFeval::generateContinuationFunction(llv
                             }
                         } else {
                             // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
-                            std::cerr << "WARNING: reconstructing alloca instruction referenced in a predecessor block" << std::endl;
-                            valueToSet->dump();
+                            if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+                                std::cerr << "WARNING: reconstructing alloca instruction referenced in a predecessor block" << std::endl;
+                                valueToSet->dump();
+                            }
                         }
                         predecessors.insert(newBlock);
                     } else {
                         // TODO: liveness analysis info ensures that I will be writing the values using it before reading them?!?
-                        std::cerr << "WARNING: reconstructing alloca instruction referenced in a predecessor block" << std::endl;
-                        valueToSet->dump();
+                        if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+                            std::cerr << "WARNING: reconstructing alloca instruction referenced in a predecessor block" << std::endl;
+                            valueToSet->dump();
+                        }
                     }
                 } else {
                     std::cerr << "FATAL ERROR - missing information for value:" << std::endl;
@@ -904,9 +910,12 @@ void OSRFeval::compCodeFromUnknownType(JITCompiler::Value* oldVal, JITCompiler::
     }
 
     if (newMode == oldMode) {
-        std::cerr << "WARNING: requested a cast from UNKNOWN to "
-                << DataObject::getTypeName(newType) << " with same " <<
-                JITCompiler::LLVMTypeToString(oldMode) << " IR type!" << std::endl;
+        if (ConfigManager::s_verboseVar || ConfigManager::s_veryVerboseVar) {
+            std::cerr << "WARNING: requested a cast from UNKNOWN to "
+                      << DataObject::getTypeName(newType) << " with same "
+                      << JITCompiler::LLVMTypeToString(oldMode) << " IR type!"
+                      << std::endl;
+        }
         M->registerOneToOneValue(oldVal->pValue, newVal->pValue); // no compensation code required!
         return;
     }
