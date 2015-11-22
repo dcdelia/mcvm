@@ -1,0 +1,67 @@
+==============
+(QUICK) README
+==============
+
+To build McVM, make sure that the following libraries are already installed:
+    libatlas-base-dev libblas-dev liblapacke-dev
+
+The code has been tested against LLVM 3.6.2; before building it, a preliminary
+step is required to download and compile the Boehm garbage collector:
+
+    ./bootstrap.sh
+
+Thus creating a vendor/ folder. We can then simply compile with 'make'.
+
+McVM requires an additional component called Natlab for parsing MATLAB code. For
+the sake of simplicity, this distribution ships with a precompiled jar version.
+
+Simply execute './mcvm' to run McVM.
+
+A partial list of the options supported by McVM is reported below. Notice that
+it might be inaccurate, as it has been excerpted from the soure code by hand.
+
+-jit_enable
+	Use JIT compiler
+	Default: true
+-jit_copy_enable
+	Enable array deep copy
+	Default: false
+-jit_feval_opt
+    Enable new optimization technique for feval calls (CGO'16 paper)
+    Default: true
+-jit_use_array_opts
+	Optimize operations on arrays
+	Default: true
+-jit_use_binop_opts
+	Optimize binary operations
+	Default: true
+-jit_use_libfunc_opts
+	Use optimized function libraries when possible
+	Default: true
+-jit_use_direct_calls
+	Use direct calls when possible
+	Default: true
+-jit_no_read_bound_checks
+	Disable matrix read bound checking
+	Default: false
+-jit_no_write_bound_checks
+	Disable matrix write bound checking
+	Default: false
+-validate_type_infer
+	Static type inference validation
+	Default: false
+-profile_type_infer
+	Profile type inference engine
+	Default: false
+-start_dir
+	Set starting directory
+	Default: .
+-verbose
+	Verbose output (e.g., shows generated LLVM IR)
+	Default: false
+-very_verbose
+	Very verbose output (e.g., shows type inference results)
+	Default: false
+
+Daniele Cono D'Elia
+19 November 2015
