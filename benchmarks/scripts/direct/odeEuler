@@ -1,5 +1,3 @@
 cd benchmarks/odeEuler
-for trial = 1:5
-  testSH_direct
-end
+testSH_direct
 quit
